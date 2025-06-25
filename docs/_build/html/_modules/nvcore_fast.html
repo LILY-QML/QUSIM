@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nvcore_fast &#8212; QUSIM 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=61cd365c" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=12dfc556" />
+    <script src="../_static/documentation_options.js?v=8d563738"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for nvcore_fast</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Optimized NV System - Fast version with same physics</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy.linalg</span> <span class="kn">import</span> <span class="n">expm</span>
+<span class="kn">from</span> <span class="nn">scipy.integrate</span> <span class="kn">import</span> <span class="n">solve_ivp</span>
+<span class="kn">import</span> <span class="nn">sys</span><span class="o">,</span> <span class="nn">os</span>
+<span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;helper&#39;</span><span class="p">)</span>
+<span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;modules&#39;</span><span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">noise</span> <span class="kn">import</span> <span class="n">NoiseGenerator</span><span class="p">,</span> <span class="n">NoiseConfiguration</span>
+<span class="kn">from</span> <span class="nn">noise_sources</span> <span class="kn">import</span> <span class="n">SYSTEM</span>
+
+<div class="viewcode-block" id="FastNVSystem">
+<a class="viewcode-back" href="../api_reference.html#nvcore_fast.FastNVSystem">[docs]</a>
+<span class="k">class</span> <span class="nc">FastNVSystem</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Optimized NV system for faster computation&quot;&quot;&quot;</span>
+    
+<div class="viewcode-block" id="FastNVSystem.__init__">
+<a class="viewcode-back" href="../api_reference.html#nvcore_fast.FastNVSystem.__init__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">B_field</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">enable_noise</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">B_field</span> <span class="o">=</span> <span class="n">B_field</span> <span class="k">if</span> <span class="n">B_field</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">enable_noise</span> <span class="o">=</span> <span class="n">enable_noise</span>
+        
+        <span class="c1"># Constants</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">D</span> <span class="o">=</span> <span class="n">SYSTEM</span><span class="o">.</span><span class="n">get_constant</span><span class="p">(</span><span class="s1">&#39;nv_center&#39;</span><span class="p">,</span> <span class="s1">&#39;d_gs&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gamma_e</span> <span class="o">=</span> <span class="n">SYSTEM</span><span class="o">.</span><span class="n">get_constant</span><span class="p">(</span><span class="s1">&#39;nv_center&#39;</span><span class="p">,</span> <span class="s1">&#39;gamma_e&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hbar</span> <span class="o">=</span> <span class="n">SYSTEM</span><span class="o">.</span><span class="n">get_constant</span><span class="p">(</span><span class="s1">&#39;fundamental&#39;</span><span class="p">,</span> <span class="s1">&#39;hbar&#39;</span><span class="p">)</span>
+        
+        <span class="c1"># Spin operators</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Sz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">([</span><span class="o">-</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">])</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">complex</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Sx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Sy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="n">j</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="n">j</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="n">j</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="n">j</span><span class="p">,</span> <span class="mi">0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">I</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+        
+        <span class="c1"># Pre-compute static Hamiltonian</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">H_static</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_static_hamiltonian</span><span class="p">()</span>
+        
+        <span class="c1"># Simple noise configuration (only essential sources)</span>
+        <span class="k">if</span> <span class="n">enable_noise</span><span class="p">:</span>
+            <span class="n">config</span> <span class="o">=</span> <span class="n">NoiseConfiguration</span><span class="p">()</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">enable_c13_bath</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">enable_temperature</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># Disable slow sources</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">enable_johnson</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">enable_charge_noise</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">enable_external_field</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">enable_strain</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">enable_microwave</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">enable_optical</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">dt</span> <span class="o">=</span> <span class="mf">1e-8</span>  <span class="c1"># Larger timestep</span>
+            
+            <span class="bp">self</span><span class="o">.</span><span class="n">noise_gen</span> <span class="o">=</span> <span class="n">NoiseGenerator</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+            <span class="c1"># Pre-sample noise for efficiency</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_noise_cache</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cache_size</span> <span class="o">=</span> <span class="mi">1000</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cache_idx</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">noise_gen</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+    
+    <span class="k">def</span> <span class="nf">_compute_static_hamiltonian</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pre-compute static part of Hamiltonian&quot;&quot;&quot;</span>
+        <span class="c1"># Zero-field splitting</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">D</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Sz</span> <span class="o">@</span> <span class="bp">self</span><span class="o">.</span><span class="n">Sz</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span><span class="o">/</span><span class="mi">3</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">)</span>
+        
+        <span class="c1"># Static Zeeman</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">B_field</span><span class="p">):</span>
+            <span class="n">H</span> <span class="o">+=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma_e</span> <span class="o">*</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">B_field</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Sx</span> <span class="o">+</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">B_field</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Sy</span> <span class="o">+</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">B_field</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Sz</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">H</span>
+    
+    <span class="k">def</span> <span class="nf">_get_noise_field</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get noise field from cache for efficiency&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">enable_noise</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">noise_gen</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+            
+        <span class="c1"># Refill cache if needed</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_noise_cache</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cache_idx</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cache_size</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_noise_cache</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">noise_gen</span><span class="o">.</span><span class="n">get_total_magnetic_noise</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cache_size</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cache_idx</span> <span class="o">=</span> <span class="mi">0</span>
+            
+        <span class="n">noise</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_noise_cache</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_cache_idx</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cache_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">noise</span>
+    
+<div class="viewcode-block" id="FastNVSystem.get_hamiltonian">
+<a class="viewcode-back" href="../api_reference.html#nvcore_fast.FastNVSystem.get_hamiltonian">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_hamiltonian</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get total Hamiltonian with cached noise&quot;&quot;&quot;</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">H_static</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">enable_noise</span><span class="p">:</span>
+            <span class="n">B_noise</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_noise_field</span><span class="p">()</span>
+            <span class="n">H</span> <span class="o">+=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma_e</span> <span class="o">*</span> <span class="p">(</span>
+                <span class="n">B_noise</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Sx</span> <span class="o">+</span>
+                <span class="n">B_noise</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Sy</span> <span class="o">+</span>
+                <span class="n">B_noise</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Sz</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">H</span></div>
+
+    
+<div class="viewcode-block" id="FastNVSystem.evolve_unitary">
+<a class="viewcode-back" href="../api_reference.html#nvcore_fast.FastNVSystem.evolve_unitary">[docs]</a>
+    <span class="k">def</span> <span class="nf">evolve_unitary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rho0</span><span class="p">,</span> <span class="n">t_span</span><span class="p">,</span> <span class="n">n_steps</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Fast unitary evolution (no dissipation)&quot;&quot;&quot;</span>
+        <span class="n">times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">t_span</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">t_span</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">n_steps</span><span class="p">)</span>
+        <span class="n">dt</span> <span class="o">=</span> <span class="n">times</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">times</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        
+        <span class="n">rhos</span> <span class="o">=</span> <span class="p">[</span><span class="n">rho0</span><span class="p">]</span>
+        <span class="n">current_rho</span> <span class="o">=</span> <span class="n">rho0</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_steps</span><span class="p">):</span>
+            <span class="c1"># Get Hamiltonian for this step</span>
+            <span class="n">H</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_hamiltonian</span><span class="p">()</span>
+            
+            <span class="c1"># Unitary evolution operator</span>
+            <span class="n">U</span> <span class="o">=</span> <span class="n">expm</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="n">j</span> <span class="o">*</span> <span class="n">H</span> <span class="o">*</span> <span class="n">dt</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">hbar</span><span class="p">)</span>
+            
+            <span class="c1"># Evolve density matrix</span>
+            <span class="n">current_rho</span> <span class="o">=</span> <span class="n">U</span> <span class="o">@</span> <span class="n">current_rho</span> <span class="o">@</span> <span class="n">U</span><span class="o">.</span><span class="n">conj</span><span class="p">()</span><span class="o">.</span><span class="n">T</span>
+            <span class="n">rhos</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">current_rho</span><span class="p">)</span>
+            
+        <span class="k">return</span> <span class="n">times</span><span class="p">,</span> <span class="n">rhos</span></div>
+
+    
+<div class="viewcode-block" id="FastNVSystem.simple_lindblad">
+<a class="viewcode-back" href="../api_reference.html#nvcore_fast.FastNVSystem.simple_lindblad">[docs]</a>
+    <span class="k">def</span> <span class="nf">simple_lindblad</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rho0</span><span class="p">,</span> <span class="n">t_span</span><span class="p">,</span> <span class="n">gamma_1</span><span class="o">=</span><span class="mf">1e3</span><span class="p">,</span> <span class="n">gamma_2</span><span class="o">=</span><span class="mf">1e6</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Simplified Lindblad with phenomenological rates&quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">rhs</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">rho_vec</span><span class="p">):</span>
+            <span class="n">rho</span> <span class="o">=</span> <span class="n">rho_vec</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+            
+            <span class="c1"># Hamiltonian part</span>
+            <span class="n">H</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_hamiltonian</span><span class="p">()</span>
+            <span class="n">drho</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="n">j</span> <span class="o">*</span> <span class="p">(</span><span class="n">H</span> <span class="o">@</span> <span class="n">rho</span> <span class="o">-</span> <span class="n">rho</span> <span class="o">@</span> <span class="n">H</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">hbar</span>
+            
+            <span class="c1"># Simple T1 relaxation</span>
+            <span class="n">drho</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="n">gamma_1</span> <span class="o">*</span> <span class="n">rho</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>  <span class="c1"># |0⟩ → |-1⟩</span>
+            <span class="n">drho</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-=</span> <span class="n">gamma_1</span> <span class="o">*</span> <span class="n">rho</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+            
+            <span class="c1"># Simple T2 dephasing</span>
+            <span class="n">drho</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-=</span> <span class="n">gamma_2</span> <span class="o">*</span> <span class="n">rho</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="n">drho</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-=</span> <span class="n">gamma_2</span> <span class="o">*</span> <span class="n">rho</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+            <span class="n">drho</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">-=</span> <span class="n">gamma_2</span> <span class="o">*</span> <span class="n">rho</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+            <span class="n">drho</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-=</span> <span class="n">gamma_2</span> <span class="o">*</span> <span class="n">rho</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+            <span class="n">drho</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">-=</span> <span class="n">gamma_2</span> <span class="o">*</span> <span class="n">rho</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+            <span class="n">drho</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-=</span> <span class="n">gamma_2</span> <span class="o">*</span> <span class="n">rho</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+            
+            <span class="k">return</span> <span class="n">drho</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        
+        <span class="c1"># Use larger tolerances for speed</span>
+        <span class="n">sol</span> <span class="o">=</span> <span class="n">solve_ivp</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="n">t_span</span><span class="p">,</span> <span class="n">rho0</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span> 
+                       <span class="n">method</span><span class="o">=</span><span class="s1">&#39;RK23&#39;</span><span class="p">,</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span>
+                       <span class="n">max_step</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">)</span>
+        
+        <span class="n">times</span> <span class="o">=</span> <span class="n">sol</span><span class="o">.</span><span class="n">t</span>
+        <span class="n">rhos</span> <span class="o">=</span> <span class="p">[</span><span class="n">sol</span><span class="o">.</span><span class="n">y</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">times</span><span class="p">))]</span>
+        
+        <span class="k">return</span> <span class="n">times</span><span class="p">,</span> <span class="n">rhos</span></div>
+</div>
+
+
+<div class="viewcode-block" id="demo_fast_evolution">
+<a class="viewcode-back" href="../api_reference.html#nvcore_fast.demo_fast_evolution">[docs]</a>
+<span class="k">def</span> <span class="nf">demo_fast_evolution</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Demonstrate fast evolution&quot;&quot;&quot;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;FAST NV SYSTEM DEMONSTRATION&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span><span class="o">*</span><span class="mi">30</span><span class="p">)</span>
+    
+    <span class="c1"># Initialize</span>
+    <span class="n">B_field</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e-3</span><span class="p">])</span>  <span class="c1"># 1 mT</span>
+    <span class="n">nv</span> <span class="o">=</span> <span class="n">FastNVSystem</span><span class="p">(</span><span class="n">B_field</span><span class="p">,</span> <span class="n">enable_noise</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    
+    <span class="c1"># Initial state: superposition</span>
+    <span class="n">psi0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">rho0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">psi0</span><span class="p">,</span> <span class="n">psi0</span><span class="o">.</span><span class="n">conj</span><span class="p">())</span>
+    
+    <span class="c1"># Fast unitary evolution</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">1. Unitary evolution (100 ns)...&quot;</span><span class="p">)</span>
+    <span class="kn">import</span> <span class="nn">time</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="n">times</span><span class="p">,</span> <span class="n">rhos</span> <span class="o">=</span> <span class="n">nv</span><span class="o">.</span><span class="n">evolve_unitary</span><span class="p">(</span><span class="n">rho0</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">100e-9</span><span class="p">),</span> <span class="n">n_steps</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   Completed in </span><span class="si">{</span><span class="n">elapsed</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2"> seconds&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Populations</span>
+    <span class="n">final_pops</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">rhos</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   Final populations: </span><span class="si">{</span><span class="n">final_pops</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Fast Lindblad</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">2. Lindblad evolution (1 μs)...&quot;</span><span class="p">)</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="n">times2</span><span class="p">,</span> <span class="n">rhos2</span> <span class="o">=</span> <span class="n">nv</span><span class="o">.</span><span class="n">simple_lindblad</span><span class="p">(</span><span class="n">rho0</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">))</span>
+    <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   Completed in </span><span class="si">{</span><span class="n">elapsed</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2"> seconds&quot;</span><span class="p">)</span>
+    
+    <span class="n">final_pops2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">rhos2</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   Final populations: </span><span class="si">{</span><span class="n">final_pops2</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Coherence</span>
+    <span class="n">coherence</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">rhos2</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   Final coherence: </span><span class="si">{</span><span class="n">coherence</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">✓ Fast evolution complete!&quot;</span><span class="p">)</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">demo_fast_evolution</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">QUSIM</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference.html">API Reference</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, QUSIM Development Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 7.3.7</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
