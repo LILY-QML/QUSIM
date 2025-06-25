@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+    <title>Getting Started &#8212; QUSIM 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=61cd365c" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=12dfc556" />
+    <script src="_static/documentation_options.js?v=8d563738"></script>
+    <script src="_static/doctools.js?v=9a2dae69"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Reference" href="api_reference.html" />
+    <link rel="prev" title="QUSIM: Quantum Simulation of NV Centers" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="getting-started">
+<h1>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading">¶</a></h1>
+<p>This guide will help you get up and running with QUSIM for NV center quantum simulations.</p>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
+<section id="prerequisites">
+<h3>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">¶</a></h3>
+<p>QUSIM requires Python 3.8 or later and the following packages:</p>
+<ul class="simple">
+<li><p>NumPy (≥1.20.0)</p></li>
+<li><p>SciPy (≥1.7.0)</p></li>
+<li><p>Matplotlib (≥3.3.0)</p></li>
+</ul>
+<p>Optional dependencies:</p>
+<ul class="simple">
+<li><p>Sphinx (for building documentation)</p></li>
+<li><p>pytest (for running tests)</p></li>
+</ul>
+</section>
+<section id="setup">
+<h3>Setup<a class="headerlink" href="#setup" title="Link to this heading">¶</a></h3>
+<ol class="arabic simple">
+<li><p>Clone or download the QUSIM package</p></li>
+<li><p>Navigate to the QUSIM directory</p></li>
+<li><p>Install dependencies:</p></li>
+</ol>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>numpy<span class="w"> </span>scipy<span class="w"> </span>matplotlib
+</pre></div>
+</div>
+<p>Or if you have a requirements.txt file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</pre></div>
+</div>
+</section>
+</section>
+<section id="basic-concepts">
+<h2>Basic Concepts<a class="headerlink" href="#basic-concepts" title="Link to this heading">¶</a></h2>
+<section id="nv-center-physics">
+<h3>NV Center Physics<a class="headerlink" href="#nv-center-physics" title="Link to this heading">¶</a></h3>
+<p>The nitrogen-vacancy (NV) center is a point defect in diamond consisting of a nitrogen atom
+adjacent to a vacancy. The electronic ground state is a spin-1 triplet with the following
+key properties:</p>
+<ul class="simple">
+<li><p><strong>Zero-field splitting</strong>: D ≈ 2.87 GHz separates the ms=0 from ms=±1 states</p></li>
+<li><p><strong>Zeeman effect</strong>: Linear response to magnetic fields with γe ≈ 28 GHz/T</p></li>
+<li><p><strong>Optical transitions</strong>: Can be initialized and read out optically</p></li>
+<li><p><strong>Long coherence times</strong>: T2* ~ 1-100 μs, T2 ~ 1 ms, T1 ~ 1-10 ms</p></li>
+</ul>
+</section>
+<section id="noise-sources">
+<h3>Noise Sources<a class="headerlink" href="#noise-sources" title="Link to this heading">¶</a></h3>
+<p>QUSIM models various environmental noise sources:</p>
+<ul class="simple">
+<li><p><strong>C13 nuclear bath</strong>: Magnetic noise from ¹³C nuclear spins</p></li>
+<li><p><strong>Charge noise</strong>: Electric field fluctuations affecting strain</p></li>
+<li><p><strong>Temperature fluctuations</strong>: Thermal noise in the diamond lattice</p></li>
+<li><p><strong>Johnson noise</strong>: Electronic noise from measurement apparatus</p></li>
+<li><p><strong>Magnetic field noise</strong>: External field fluctuations</p></li>
+</ul>
+</section>
+</section>
+<section id="your-first-simulation">
+<h2>Your First Simulation<a class="headerlink" href="#your-first-simulation" title="Link to this heading">¶</a></h2>
+<p>Let’s start with a simple example to simulate the evolution of an NV center:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">from</span> <span class="nn">nvcore</span> <span class="kn">import</span> <span class="n">NVSystem</span><span class="p">,</span> <span class="n">NoiseConfiguration</span>
+
+<span class="c1"># Create a noise configuration</span>
+<span class="n">config</span> <span class="o">=</span> <span class="n">NoiseConfiguration</span><span class="p">()</span>
+<span class="n">config</span><span class="o">.</span><span class="n">enable_c13_bath</span> <span class="o">=</span> <span class="kc">True</span>    <span class="c1"># Enable nuclear spin bath</span>
+<span class="n">config</span><span class="o">.</span><span class="n">enable_charge_noise</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Enable charge noise</span>
+
+<span class="c1"># Create NV system with 10 mT magnetic field along z</span>
+<span class="n">B_field</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">])</span>  <span class="c1"># Tesla</span>
+<span class="n">nv</span> <span class="o">=</span> <span class="n">NVSystem</span><span class="p">(</span><span class="n">B_field</span><span class="o">=</span><span class="n">B_field</span><span class="p">,</span> <span class="n">noise_config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+
+<span class="c1"># Prepare initial state (ms=0)</span>
+<span class="n">rho0</span> <span class="o">=</span> <span class="n">nv</span><span class="o">.</span><span class="n">create_initial_state</span><span class="p">(</span><span class="s1">&#39;ms0&#39;</span><span class="p">)</span>
+
+<span class="c1"># Evolve for 1 microsecond</span>
+<span class="n">times</span><span class="p">,</span> <span class="n">rhos</span> <span class="o">=</span> <span class="n">nv</span><span class="o">.</span><span class="n">evolve</span><span class="p">(</span><span class="n">rho0</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">))</span>
+
+<span class="c1"># Extract populations</span>
+<span class="n">populations</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">rho</span> <span class="ow">in</span> <span class="n">rhos</span><span class="p">:</span>
+    <span class="n">pops</span> <span class="o">=</span> <span class="n">nv</span><span class="o">.</span><span class="n">get_state_populations</span><span class="p">(</span><span class="n">rho</span><span class="p">)</span>
+    <span class="n">populations</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">pops</span><span class="p">[</span><span class="s1">&#39;ms-1&#39;</span><span class="p">],</span> <span class="n">pops</span><span class="p">[</span><span class="s1">&#39;ms0&#39;</span><span class="p">],</span> <span class="n">pops</span><span class="p">[</span><span class="s1">&#39;ms+1&#39;</span><span class="p">]])</span>
+
+<span class="n">populations</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">populations</span><span class="p">)</span>
+
+<span class="c1"># Plot results</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">times</span><span class="o">*</span><span class="mf">1e6</span><span class="p">,</span> <span class="n">populations</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;ms=-1&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">times</span><span class="o">*</span><span class="mf">1e6</span><span class="p">,</span> <span class="n">populations</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;ms=0&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">times</span><span class="o">*</span><span class="mf">1e6</span><span class="p">,</span> <span class="n">populations</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;ms=+1&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Time (μs)&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;Population&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;NV Center Evolution&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<section id="understanding-the-results">
+<h3>Understanding the Results<a class="headerlink" href="#understanding-the-results" title="Link to this heading">¶</a></h3>
+<p>The simulation shows how the NV center evolves under the influence of its environment:</p>
+<ol class="arabic simple">
+<li><p><strong>Population dynamics</strong>: How probability flows between the three spin states</p></li>
+<li><p><strong>Decoherence</strong>: Loss of quantum coherence due to noise</p></li>
+<li><p><strong>Relaxation</strong>: Population redistribution toward thermal equilibrium</p></li>
+</ol>
+</section>
+</section>
+<section id="pulse-sequences">
+<h2>Pulse Sequences<a class="headerlink" href="#pulse-sequences" title="Link to this heading">¶</a></h2>
+<p>QUSIM supports arbitrary microwave pulse sequences. Here’s a Ramsey interferometry example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Create Ramsey sequence: π/2 - wait - π/2</span>
+<span class="n">ramsey_sequence</span> <span class="o">=</span> <span class="n">nv</span><span class="o">.</span><span class="n">create_ramsey_sequence</span><span class="p">(</span><span class="n">T_ramsey</span><span class="o">=</span><span class="mf">5e-6</span><span class="p">)</span>  <span class="c1"># 5 μs wait time</span>
+
+<span class="c1"># Apply sequence</span>
+<span class="n">times</span><span class="p">,</span> <span class="n">rhos</span> <span class="o">=</span> <span class="n">nv</span><span class="o">.</span><span class="n">evolve_with_pulses</span><span class="p">(</span><span class="n">rho0</span><span class="p">,</span> <span class="n">ramsey_sequence</span><span class="p">)</span>
+
+<span class="c1"># Measure final coherence</span>
+<span class="n">final_rho</span> <span class="o">=</span> <span class="n">rhos</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">coherence</span> <span class="o">=</span> <span class="n">nv</span><span class="o">.</span><span class="n">measure_observable</span><span class="p">(</span><span class="n">final_rho</span><span class="p">,</span> <span class="n">nv</span><span class="o">.</span><span class="n">hamiltonian</span><span class="o">.</span><span class="n">spin_ops</span><span class="o">.</span><span class="n">Sx</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Final coherence: </span><span class="si">{</span><span class="n">coherence</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<section id="t2-measurement">
+<h3>T2* Measurement<a class="headerlink" href="#t2-measurement" title="Link to this heading">¶</a></h3>
+<p>Simulate a complete T2* measurement:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Scan Ramsey wait times</span>
+<span class="n">tau_values</span><span class="p">,</span> <span class="n">coherences</span> <span class="o">=</span> <span class="n">nv</span><span class="o">.</span><span class="n">simulate_t2_measurement</span><span class="p">(</span>
+    <span class="n">tau_max</span><span class="o">=</span><span class="mf">10e-6</span><span class="p">,</span>     <span class="c1"># Maximum wait time</span>
+    <span class="n">n_points</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>       <span class="c1"># Number of points</span>
+    <span class="n">sequence</span><span class="o">=</span><span class="s1">&#39;ramsey&#39;</span>  <span class="c1"># Use Ramsey sequence</span>
+<span class="p">)</span>
+
+<span class="c1"># Fit exponential decay</span>
+<span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="kn">import</span> <span class="n">curve_fit</span>
+
+<span class="k">def</span> <span class="nf">exp_decay</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">T2_star</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">A</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">t</span> <span class="o">/</span> <span class="n">T2_star</span><span class="p">)</span>
+
+<span class="n">popt</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">curve_fit</span><span class="p">(</span><span class="n">exp_decay</span><span class="p">,</span> <span class="n">tau_values</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">coherences</span><span class="p">))</span>
+<span class="n">T2_star_fitted</span> <span class="o">=</span> <span class="n">popt</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Fitted T2*: </span><span class="si">{</span><span class="n">T2_star_fitted</span><span class="o">*</span><span class="mf">1e6</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> μs&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="performance-considerations">
+<h2>Performance Considerations<a class="headerlink" href="#performance-considerations" title="Link to this heading">¶</a></h2>
+<section id="fast-mode">
+<h3>Fast Mode<a class="headerlink" href="#fast-mode" title="Link to this heading">¶</a></h3>
+<p>For large parameter sweeps or long simulations, use the fast mode:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">nvcore_fast</span> <span class="kn">import</span> <span class="n">FastNVSystem</span>
+
+<span class="c1"># Create fast system (simplified physics for speed)</span>
+<span class="n">fast_nv</span> <span class="o">=</span> <span class="n">FastNVSystem</span><span class="p">(</span><span class="n">B_field</span><span class="o">=</span><span class="n">B_field</span><span class="p">,</span> <span class="n">enable_noise</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="c1"># Same interface as regular system</span>
+<span class="n">times</span><span class="p">,</span> <span class="n">rhos</span> <span class="o">=</span> <span class="n">fast_nv</span><span class="o">.</span><span class="n">evolve_unitary</span><span class="p">(</span><span class="n">rho0</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>The fast mode provides:</p>
+<ul class="simple">
+<li><p>2-10x speedup for typical simulations</p></li>
+<li><p>Reduced memory usage</p></li>
+<li><p>Simplified noise models</p></li>
+<li><p>Same basic physics</p></li>
+</ul>
+</section>
+<section id="when-to-use-each-mode">
+<h3>When to Use Each Mode<a class="headerlink" href="#when-to-use-each-mode" title="Link to this heading">¶</a></h3>
+<p><strong>Regular mode</strong> for:
+* High-accuracy simulations
+* Detailed noise analysis
+* Research applications
+* Method development</p>
+<p><strong>Fast mode</strong> for:
+* Parameter sweeps
+* Real-time applications
+* Educational demonstrations
+* Preliminary studies</p>
+</section>
+</section>
+<section id="next-steps">
+<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">¶</a></h2>
+<p>Now that you’ve run your first simulation, explore:</p>
+<ul class="simple">
+<li><p><span class="xref std std-doc">tutorial</span> - Detailed tutorials for common experiments</p></li>
+<li><p><span class="xref std std-doc">examples</span> - Gallery of example simulations</p></li>
+<li><p><a class="reference internal" href="api_reference.html"><span class="doc">API Reference</span></a> - Complete API documentation</p></li>
+<li><p><span class="xref std std-doc">performance</span> - Performance optimization guide</p></li>
+</ul>
+</section>
+<section id="command-line-interface">
+<h2>Command Line Interface<a class="headerlink" href="#command-line-interface" title="Link to this heading">¶</a></h2>
+<p>QUSIM also provides a command-line interface through <cite>core.py</cite>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Run fast simulation</span>
+python<span class="w"> </span>core.py<span class="w"> </span>--fast<span class="w"> </span>--time<span class="w"> </span>1e-6
+
+<span class="c1"># Ramsey sequence with specific noise</span>
+python<span class="w"> </span>core.py<span class="w"> </span>--demo<span class="w"> </span>--pulse-sequence<span class="w"> </span>ramsey<span class="w"> </span>--noise<span class="w"> </span>c13_bath
+
+<span class="c1"># Generate plots</span>
+python<span class="w"> </span>core.py<span class="w"> </span>--time<span class="w"> </span>1e-6<span class="w"> </span>--plot<span class="w"> </span>--output<span class="w"> </span>results/
+</pre></div>
+</div>
+<p>See the <span class="xref std std-doc">api/core</span> documentation for all available options.</p>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading">¶</a></h2>
+<section id="common-issues">
+<h3>Common Issues<a class="headerlink" href="#common-issues" title="Link to this heading">¶</a></h3>
+<p><strong>Import errors</strong>: Make sure all dependencies are installed and the QUSIM directory is in your Python path.</p>
+<p><strong>Slow performance</strong>: Try the fast mode or reduce the simulation time/resolution.</p>
+<p><strong>Memory usage</strong>: For long simulations, avoid saving the full trajectory with <cite>–save-trajectory</cite>.</p>
+<p><strong>Numerical errors</strong>: Check that your initial state is a valid density matrix (Hermitian, trace=1).</p>
+</section>
+<section id="getting-help">
+<h3>Getting Help<a class="headerlink" href="#getting-help" title="Link to this heading">¶</a></h3>
+<p>If you encounter issues:</p>
+<ol class="arabic simple">
+<li><p>Check the examples in this documentation</p></li>
+<li><p>Review the API reference for proper function usage</p></li>
+<li><p>Run the test suite to verify your installation</p></li>
+<li><p>Submit issues to the project repository</p></li>
+</ol>
+<p>The test suite can be run with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>test.py
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">QUSIM</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#basic-concepts">Basic Concepts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#your-first-simulation">Your First Simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pulse-sequences">Pulse Sequences</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#performance-considerations">Performance Considerations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#command-line-interface">Command Line Interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">QUSIM: Quantum Simulation of NV Centers</a></li>
+      <li>Next: <a href="api_reference.html" title="next chapter">API Reference</a></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, QUSIM Development Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 7.3.7</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+      |
+      <a href="_sources/getting_started.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
