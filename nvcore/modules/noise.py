@@ -26,11 +26,7 @@ from noise_sources import (
     MicrowaveNoise,
     OpticalNoise
 )
-from filter_functions import FilterFunctionCalculator
-from charge_dynamics import MultiLevelChargeNoise, create_charge_state_model
-from strain_tensor import StrainTensorNoise, create_bulk_diamond_strain, create_nanodiamond_strain, create_surface_nv_strain
-from non_markovian import NonMarkovianBath, create_c13_non_markovian_bath, create_phonon_non_markovian_bath, create_charge_non_markovian_bath
-from leeson_microwave import LeesonMicrowaveNoise, create_lab_microwave_source, create_precision_microwave_source
+# Advanced modules removed in cleanup - using basic implementations only
 
 
 @dataclass
@@ -47,11 +43,7 @@ class NoiseConfiguration:
     enable_microwave: bool = True
     enable_optical: bool = True
     
-    # Phase 2 improvements
-    enable_tensor_strain: bool = False  # Advanced strain model
-    enable_multi_level_charge: bool = False  # Advanced charge dynamics
-    enable_non_markovian: bool = False  # Memory effects
-    enable_leeson_microwave: bool = False  # Advanced MW model
+    # Advanced features disabled after cleanup
     
     # Simulation parameters (defaults from system.json)
     dt: float = field(default_factory=lambda: SYSTEM.defaults['timestep'])
@@ -116,8 +108,7 @@ class NoiseGenerator:
         # Cache for performance
         self._spin_operators_cache = None
         
-        # Filter function calculator
-        self.filter_calc = FilterFunctionCalculator()
+        # Advanced filter calculator removed in cleanup
         
     def _initialize_sources(self):
         """Initialize all enabled noise sources"""
@@ -153,42 +144,7 @@ class NoiseGenerator:
             override_params = self.config.parameter_overrides.get('optical', {})
             self.sources['optical'] = OpticalNoise(self.rng, override_params)
             
-        # Phase 2 advanced implementations
-        if self.config.enable_multi_level_charge:
-            override_params = self.config.parameter_overrides.get('multi_level_charge', {})
-            # Replace simple charge noise with multi-level model
-            if 'charge_state' in self.sources:
-                del self.sources['charge_state']
-            self.sources['multi_level_charge'] = MultiLevelChargeNoise(self.rng, override_params)
-            
-        if self.config.enable_tensor_strain:
-            override_params = self.config.parameter_overrides.get('tensor_strain', {})
-            # Replace simple strain with tensor model
-            if 'strain' in self.sources:
-                del self.sources['strain'] 
-            self.sources['tensor_strain'] = StrainTensorNoise(self.rng, override_params)
-            
-        if self.config.enable_leeson_microwave:
-            override_params = self.config.parameter_overrides.get('leeson_microwave', {})
-            # Replace simple MW noise with Leeson model
-            if 'microwave' in self.sources:
-                del self.sources['microwave']
-            carrier_freq = override_params.get('carrier_frequency', SYSTEM.get_constant('nv_center', 'd_gs'))
-            self.sources['leeson_microwave'] = LeesonMicrowaveNoise(carrier_freq, self.rng, override_params)
-            
-        if self.config.enable_non_markovian:
-            override_params = self.config.parameter_overrides.get('non_markovian', {})
-            bath_type = override_params.get('bath_type', 'c13')
-            
-            if bath_type == 'c13':
-                concentration = override_params.get('c13_concentration', 0.011)
-                self.sources['non_markovian_c13'] = create_c13_non_markovian_bath(concentration)
-            elif bath_type == 'phonon':
-                temperature = override_params.get('temperature', 300.0)
-                self.sources['non_markovian_phonon'] = create_phonon_non_markovian_bath(temperature)
-            elif bath_type == 'charge':
-                depth = override_params.get('depth_nm', 10.0)
-                self.sources['non_markovian_charge'] = create_charge_non_markovian_bath(depth)
+        # Advanced implementations removed in cleanup
             
         # Set timestep for all sources
         for source in self.sources.values():
