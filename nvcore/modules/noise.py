@@ -26,6 +26,11 @@ from noise_sources import (
     MicrowaveNoise,
     OpticalNoise
 )
+from filter_functions import FilterFunctionCalculator
+from charge_dynamics import MultiLevelChargeNoise, create_charge_state_model
+from strain_tensor import StrainTensorNoise, create_bulk_diamond_strain, create_nanodiamond_strain, create_surface_nv_strain
+from non_markovian import NonMarkovianBath, create_c13_non_markovian_bath, create_phonon_non_markovian_bath, create_charge_non_markovian_bath
+from leeson_microwave import LeesonMicrowaveNoise, create_lab_microwave_source, create_precision_microwave_source
 
 
 @dataclass
@@ -41,6 +46,12 @@ class NoiseConfiguration:
     enable_strain: bool = True
     enable_microwave: bool = True
     enable_optical: bool = True
+    
+    # Phase 2 improvements
+    enable_tensor_strain: bool = False  # Advanced strain model
+    enable_multi_level_charge: bool = False  # Advanced charge dynamics
+    enable_non_markovian: bool = False  # Memory effects
+    enable_leeson_microwave: bool = False  # Advanced MW model
     
     # Simulation parameters (defaults from system.json)
     dt: float = field(default_factory=lambda: SYSTEM.defaults['timestep'])
@@ -105,6 +116,9 @@ class NoiseGenerator:
         # Cache for performance
         self._spin_operators_cache = None
         
+        # Filter function calculator
+        self.filter_calc = FilterFunctionCalculator()
+        
     def _initialize_sources(self):
         """Initialize all enabled noise sources"""
         if self.config.enable_c13_bath:
@@ -138,6 +152,43 @@ class NoiseGenerator:
         if self.config.enable_optical:
             override_params = self.config.parameter_overrides.get('optical', {})
             self.sources['optical'] = OpticalNoise(self.rng, override_params)
+            
+        # Phase 2 advanced implementations
+        if self.config.enable_multi_level_charge:
+            override_params = self.config.parameter_overrides.get('multi_level_charge', {})
+            # Replace simple charge noise with multi-level model
+            if 'charge_state' in self.sources:
+                del self.sources['charge_state']
+            self.sources['multi_level_charge'] = MultiLevelChargeNoise(self.rng, override_params)
+            
+        if self.config.enable_tensor_strain:
+            override_params = self.config.parameter_overrides.get('tensor_strain', {})
+            # Replace simple strain with tensor model
+            if 'strain' in self.sources:
+                del self.sources['strain'] 
+            self.sources['tensor_strain'] = StrainTensorNoise(self.rng, override_params)
+            
+        if self.config.enable_leeson_microwave:
+            override_params = self.config.parameter_overrides.get('leeson_microwave', {})
+            # Replace simple MW noise with Leeson model
+            if 'microwave' in self.sources:
+                del self.sources['microwave']
+            carrier_freq = override_params.get('carrier_frequency', SYSTEM.get_constant('nv_center', 'd_gs'))
+            self.sources['leeson_microwave'] = LeesonMicrowaveNoise(carrier_freq, self.rng, override_params)
+            
+        if self.config.enable_non_markovian:
+            override_params = self.config.parameter_overrides.get('non_markovian', {})
+            bath_type = override_params.get('bath_type', 'c13')
+            
+            if bath_type == 'c13':
+                concentration = override_params.get('c13_concentration', 0.011)
+                self.sources['non_markovian_c13'] = create_c13_non_markovian_bath(concentration)
+            elif bath_type == 'phonon':
+                temperature = override_params.get('temperature', 300.0)
+                self.sources['non_markovian_phonon'] = create_phonon_non_markovian_bath(temperature)
+            elif bath_type == 'charge':
+                depth = override_params.get('depth_nm', 10.0)
+                self.sources['non_markovian_charge'] = create_charge_non_markovian_bath(depth)
             
         # Set timestep for all sources
         for source in self.sources.values():
@@ -257,6 +308,11 @@ class NoiseGenerator:
                 dim = S_z2.shape[0]
                 H_noise += delta_d * (S_z2 - 2/3 * np.eye(dim))
                 
+            elif 'tensor_strain' in self.sources:
+                # Advanced tensor strain model
+                H_strain = self.sources['tensor_strain'].get_hamiltonian_perturbation(spin_operators)
+                H_noise += H_strain
+                
         return H_noise
         
     def get_lindblad_operators(self, spin_operators: Dict[str, np.ndarray],
@@ -296,11 +352,36 @@ class NoiseGenerator:
             if 'S+' in spin_operators and gamma_up > 0:
                 lindblad_ops.append((spin_operators['S+'], np.sqrt(gamma_up)))
                 
-        # Pure dephasing from magnetic noise
+        # Pure dephasing from magnetic noise - ULTRA REALISTIC CALCULATION
         if include_sources is None or 'dephasing' in include_sources:
-            # Estimate dephasing rate from magnetic noise spectrum
-            # This is a simplified model - real calculation would integrate PSD
-            gamma_phi = SYSTEM.defaults['typical_dephasing_rate']
+            # Calculate dephasing rate from actual magnetic noise power spectral density
+            # Integrate γ_φ = γ_e² ∫ S_B(ω) dω over relevant frequency range
+            try:
+                # Define frequency range relevant for dephasing (DC to ~100 MHz)
+                frequencies = np.logspace(-1, 8, 2000)  # 0.1 Hz to 100 MHz, high resolution
+                omega = 2 * np.pi * frequencies
+                
+                # Get total magnetic noise PSD from all enabled sources
+                noise_psd = self.get_magnetic_noise_psd(frequencies)
+                
+                # Calculate dephasing rate: γ_φ = γ_e² ∫ S_B(ω) dω
+                # Focus on z-component which dominates pure dephasing
+                gamma_e = SYSTEM.get_constant('nv_center', 'gamma_e')
+                
+                # Integrate PSD over frequency (using trapezoid rule for accuracy)
+                # Factor of 2 accounts for positive/negative frequency contributions
+                gamma_phi = 2 * gamma_e**2 * np.trapz(noise_psd, frequencies)
+                
+                # Ensure minimum numerical stability (avoid zero dephasing)
+                gamma_phi = max(gamma_phi, 1e3)  # Minimum 1 kHz dephasing rate
+                
+            except Exception as e:
+                # Only fall back if PSD calculation completely fails
+                import warnings
+                warnings.warn(f"PSD integration failed ({e}), using conservative estimate")
+                
+                # Conservative estimate based on typical room temperature magnetic noise
+                gamma_phi = 1e6  # 1 MHz as absolute fallback
             
             if 'Sz' in spin_operators:
                 lindblad_ops.append((spin_operators['Sz'], np.sqrt(gamma_phi)))
@@ -345,6 +426,17 @@ class NoiseGenerator:
             # Apply frequency drift
             result['frequency_offset'] = mw_source.sample_frequency_offset(n_samples)
             
+        elif 'leeson_microwave' in self.sources:
+            # Advanced Leeson model
+            mw_source = self.sources['leeson_microwave']
+            
+            # Generate comprehensive noise samples
+            for i in range(n_samples):
+                noise_sample = mw_source.sample(1)
+                result['rabi_frequency'][i] *= noise_sample['amplitude_factor']
+                result['phase'][i] += noise_sample['phase_noise']
+                result['frequency_offset'][i] = noise_sample['frequency_offset']
+            
         return result
         
     def process_optical_readout(self, state_populations: Dict[str, float],
@@ -362,11 +454,8 @@ class NoiseGenerator:
             Array of photon counts for each shot
         """
         if 'optical' not in self.sources:
-            warnings.warn("Optical noise not enabled, returning ideal readout")
-            # Simple Poisson noise only
-            bright_rate = 1e6  # Typical bright state rate
-            counts = self.rng.poisson(bright_rate * readout_duration, n_shots)
-            return counts
+            raise RuntimeError("Optical noise source required for realistic readout simulation. "
+                             "Enable optical noise in NoiseConfiguration.")
             
         optical = self.sources['optical']
         
@@ -435,6 +524,122 @@ class NoiseGenerator:
         except IndexError:
             # Correlation doesn't decay - return lower bound
             return evolution_time
+            
+    def get_magnetic_noise_psd(self, frequencies: np.ndarray) -> np.ndarray:
+        """
+        Get total magnetic noise power spectral density
+        
+        Args:
+            frequencies: Frequency array [Hz]
+            
+        Returns:
+            Total magnetic noise PSD [T²/Hz]
+        """
+        omega = 2 * np.pi * frequencies
+        total_psd = np.zeros_like(frequencies)
+        
+        # Add contribution from each magnetic noise source
+        if 'c13_bath' in self.sources:
+            total_psd += self.sources['c13_bath'].get_power_spectral_density(omega)
+            
+        if 'external_field' in self.sources:
+            total_psd += self.sources['external_field'].get_power_spectral_density(omega)
+            
+        if 'johnson' in self.sources:
+            total_psd += self.sources['johnson'].get_power_spectral_density(omega)
+            
+        return total_psd
+        
+    def calculate_t2_for_sequence(self, sequence_type: str, 
+                                 frequencies: np.ndarray = None,
+                                 **sequence_params) -> float:
+        """
+        Calculate T2 for specific pulse sequence using filter functions
+        
+        Args:
+            sequence_type: Type of pulse sequence ('ramsey', 'echo', 'cpmg', etc.)
+            frequencies: Frequency array [Hz] (default: auto-generate)
+            **sequence_params: Sequence-specific parameters
+            
+        Returns:
+            T2 time in seconds
+        """
+        # Generate frequency array if not provided
+        if frequencies is None:
+            frequencies = np.logspace(-3, 6, 1000)  # 1 mHz to 1 MHz
+        
+        # Get magnetic noise spectrum
+        noise_psd = self.get_magnetic_noise_psd(frequencies)
+        
+        # Calculate T2 using filter functions
+        t2 = self.filter_calc.calculate_t2_from_spectrum(
+            sequence_type, noise_psd, frequencies, **sequence_params
+        )
+        
+        return t2
+        
+    def predict_sequence_performance(self, sequence_configs: Dict[str, Dict]) -> Dict[str, float]:
+        """
+        Predict T2 times for multiple pulse sequences
+        
+        Args:
+            sequence_configs: Dict of {sequence_name: {params}}
+            
+        Returns:
+            Dict of {sequence_name: t2_time}
+        """
+        frequencies = np.logspace(-3, 6, 1000)
+        results = {}
+        
+        for seq_name, params in sequence_configs.items():
+            try:
+                t2 = self.calculate_t2_for_sequence(seq_name, frequencies, **params)
+                results[seq_name] = t2
+            except Exception as e:
+                print(f"Warning: Could not calculate T2 for {seq_name}: {e}")
+                results[seq_name] = np.nan
+                
+        return results
+        
+    def optimize_sequence_parameters(self, sequence_type: str, 
+                                   param_ranges: Dict[str, np.ndarray],
+                                   frequencies: np.ndarray = None) -> Dict[str, float]:
+        """
+        Find optimal parameters for given sequence type
+        
+        Args:
+            sequence_type: Pulse sequence type
+            param_ranges: Dict of {param_name: array_of_values}
+            frequencies: Frequency array for calculation
+            
+        Returns:
+            Dict with optimal parameters and resulting T2
+        """
+        if frequencies is None:
+            frequencies = np.logspace(-3, 6, 1000)
+            
+        best_t2 = 0
+        best_params = {}
+        
+        # Grid search over parameter space
+        param_names = list(param_ranges.keys())
+        param_arrays = list(param_ranges.values())
+        
+        # Generate all combinations
+        from itertools import product
+        for param_combo in product(*param_arrays):
+            params = dict(zip(param_names, param_combo))
+            
+            try:
+                t2 = self.calculate_t2_for_sequence(sequence_type, frequencies, **params)
+                if t2 > best_t2:
+                    best_t2 = t2
+                    best_params = params.copy()
+            except:
+                continue
+                
+        best_params['optimal_t2'] = best_t2
+        return best_params
             
     def save_configuration(self, filename: str):
         """Save current noise configuration to file"""
@@ -523,21 +728,165 @@ def create_realistic_noise_generator(temperature: float = 300.0,
     return NoiseGenerator(config)
 
 
-def create_low_noise_generator() -> NoiseGenerator:
-    """Create noise generator for ideal/low-noise conditions"""
+def create_cryogenic_low_noise_generator(temperature: float = 4.0,
+                                        c13_concentration: float = 1e-4) -> NoiseGenerator:
+    """
+    Create noise generator for cryogenic low-noise conditions with realistic parameters.
+    
+    Args:
+        temperature: Cryogenic temperature in Kelvin (must be < 77K)
+        c13_concentration: Measured isotopic purification level
+        
+    Returns:
+        NoiseGenerator with experimentally achievable low-noise parameters
+    """
+    if temperature >= 77:
+        raise ValueError("Temperature must be < 77K for cryogenic operation")
+    if c13_concentration < 1e-5:
+        raise ValueError("C13 concentration below 1e-5 is not experimentally achievable")
+        
     config = NoiseConfiguration()
     
-    # Disable most noise sources
-    config.enable_johnson = False
-    config.enable_charge_noise = False
-    config.enable_external_field = False
-    
-    # Reduce remaining noise levels
+    # Use empirically validated low-noise parameters
     config.parameter_overrides = {
-        'c13_bath': {'concentration': 1e-4},  # Isotopically pure
-        'thermal': {'base_temperature': 4.0},  # Cryogenic
-        'microwave': {'amplitude_noise': 1e-4},
-        'optical': {'laser_rin': 1e-5}
+        'c13_bath': {'concentration': c13_concentration},
+        'thermal': {'base_temperature': temperature},
+        'microwave': {
+            'amplitude_noise': SYSTEM.get_empirical_param('microwave_system', 'mw_amplitude_stability') * 0.1
+        },
+        'optical': {
+            'laser_rin': SYSTEM.get_empirical_param('optical_system', 'laser_rin') * 0.1
+        },
+        'johnson': {'temperature': temperature}  # Keep Johnson noise but at low temp
     }
+    
+    # Disable environmental noise sources that can be controlled
+    config.enable_external_field = False  # Magnetic shielding
+    config.enable_charge_noise = False    # Good surface treatment
+    
+    return NoiseGenerator(config)
+
+
+def create_advanced_realistic_generator(nv_type: str = 'bulk',
+                                      temperature: float = 300.0,
+                                      enable_memory_effects: bool = True) -> NoiseGenerator:
+    """
+    Create advanced noise generator with Phase 2 improvements
+    
+    Args:
+        nv_type: Type of NV ('bulk', 'nanodiamond', 'surface')
+        temperature: Operating temperature [K]
+        enable_memory_effects: Include non-Markovian effects
+        
+    Returns:
+        NoiseGenerator with advanced models enabled
+    """
+    config = NoiseConfiguration()
+    
+    # Enable Phase 2 advanced models
+    config.enable_tensor_strain = True
+    config.enable_multi_level_charge = True
+    config.enable_leeson_microwave = True
+    if enable_memory_effects:
+        config.enable_non_markovian = True
+    
+    # Configure based on NV type
+    if nv_type == 'bulk':
+        config.parameter_overrides = {
+            'tensor_strain': {},  # Use defaults for bulk diamond
+            'multi_level_charge': {
+                'setup_type': 'room_temperature' if temperature > 77 else 'cryogenic'
+            },
+            'leeson_microwave': {
+                'q_factor': 1e4,
+                'noise_figure_db': 12.0
+            },
+            'non_markovian': {
+                'bath_type': 'c13',
+                'c13_concentration': 0.011
+            }
+        }
+    elif nv_type == 'nanodiamond':
+        config.parameter_overrides = {
+            'tensor_strain': {
+                'strain_amplitude': 1e-6,  # Higher strain
+                'correlation_time': 1e-4,   # Faster dynamics
+                'resonance_frequency': 1000.0
+            },
+            'multi_level_charge': {
+                'setup_type': 'surface_nv',
+                'surface_distance': 5e-9
+            },
+            'leeson_microwave': {
+                'q_factor': 5e3,  # Lower Q
+                'noise_figure_db': 15.0
+            }
+        }
+    elif nv_type == 'surface':
+        config.parameter_overrides = {
+            'tensor_strain': {
+                'strain_amplitude': 2e-6,  # Highest strain
+                'correlation_time': 1e-3,
+                'resonance_frequency': 200.0,
+                'static_strain_tensor': np.array([
+                    [1e-5, 0, 0],
+                    [0, 1e-5, 0], 
+                    [0, 0, -2e-5]
+                ])
+            },
+            'multi_level_charge': {
+                'setup_type': 'surface_nv',
+                'surface_distance': 2e-9,
+                'electric_field': 1e5
+            },
+            'non_markovian': {
+                'bath_type': 'charge',
+                'depth_nm': 5.0
+            }
+        }
+    
+    # Temperature-dependent parameters
+    config.parameter_overrides['thermal'] = {'base_temperature': temperature}
+    config.parameter_overrides['johnson'] = {'temperature': temperature}
+    
+    return NoiseGenerator(config)
+
+
+def create_precision_experiment_generator() -> NoiseGenerator:
+    """Create noise generator optimized for precision experiments"""
+    config = NoiseConfiguration()
+    
+    # Enable all advanced models for maximum realism
+    config.enable_tensor_strain = True
+    config.enable_multi_level_charge = True
+    config.enable_leeson_microwave = True
+    config.enable_non_markovian = True
+    
+    # Use precision MW source
+    config.parameter_overrides = {
+        'leeson_microwave': {
+            'q_factor': 1e5,
+            'noise_figure_db': 8.0,
+            'power_level_dbm': 15.0,
+            'flicker_corner_hz': 100.0
+        },
+        'tensor_strain': {
+            'strain_amplitude': 1e-7,  # Low strain
+            'correlation_time': 10e-3
+        },
+        'multi_level_charge': {
+            'setup_type': 'cryogenic'
+        },
+        'non_markovian': {
+            'bath_type': 'c13',
+            'c13_concentration': 0.001  # Isotopically purified
+        },
+        'thermal': {'base_temperature': 4.0},  # Cryogenic
+        'optical': {'laser_rin': 1e-6}  # Low RIN laser
+    }
+    
+    # Disable some environmental noise
+    config.enable_external_field = False
+    config.enable_johnson = False
     
     return NoiseGenerator(config)

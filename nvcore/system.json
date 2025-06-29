@@ -1,4 +1,88 @@
 {
+  "empirical_parameters_comment": "=== EMPIRICAL PARAMETERS - MUST BE MEASURED FOR YOUR SPECIFIC SETUP ===",
+  
+  "empirical_parameters": {
+    "charge_state_dynamics": {
+      "jump_rate": 1.0,
+      "jump_rate_comment": "EMPIRICAL: Measure via charge state blinking statistics [Hz]",
+      "laser_ionization_factor": 0.1,
+      "laser_ionization_factor_comment": "EMPIRICAL: d(rate)/d(power) from power-dependent measurements [1/mW]",
+      "surface_distance_decay": 10e-9,
+      "surface_distance_decay_comment": "EMPIRICAL: Decay length from depth-dependent measurements [m]"
+    },
+    
+    "strain_coupling": {
+      "strain_to_zfs_coupling": 1e7,
+      "strain_to_zfs_coupling_comment": "EMPIRICAL: Measure via stress-dependent ODMR [Hz/strain]",
+      "strain_to_e_coupling": 5e6,
+      "strain_to_e_coupling_comment": "EMPIRICAL: Measure transverse strain effects [Hz/strain]"
+    },
+    
+    "noise_amplitudes": {
+      "lab_field_drift": 1e-7,
+      "lab_field_drift_comment": "EMPIRICAL: Measure your lab's B-field stability [T]",
+      "lab_field_noise_exponent": 1.0,
+      "lab_field_noise_exponent_comment": "EMPIRICAL: Fit 1/f^α from field noise PSD",
+      "temperature_stability": 0.1,
+      "temperature_stability_comment": "EMPIRICAL: Measure your setup's T fluctuations [K]",
+      "mechanical_vibration_amplitude": 1e-7,
+      "mechanical_vibration_amplitude_comment": "EMPIRICAL: Measure with accelerometer [strain]"
+    },
+    
+    "microwave_system": {
+      "mw_amplitude_stability": 0.01,
+      "mw_amplitude_stability_comment": "EMPIRICAL: Measure MW source amplitude noise",
+      "mw_phase_noise_density": 0.01,
+      "mw_phase_noise_density_comment": "EMPIRICAL: From MW source spec sheet [rad/√Hz]",
+      "mw_frequency_stability": 1e3,
+      "mw_frequency_stability_comment": "EMPIRICAL: Allan deviation of MW source [Hz]"
+    },
+    
+    "optical_system": {
+      "laser_rin": 1e-4,
+      "laser_rin_comment": "EMPIRICAL: Measure your laser's RIN spectrum",
+      "detector_dark_counts": 10,
+      "detector_dark_counts_comment": "EMPIRICAL: Measure detector in dark [Hz]",
+      "collection_efficiency": 0.03,
+      "collection_efficiency_comment": "EMPIRICAL: Calibrate with known emitter",
+      "readout_contrast": 0.95,
+      "readout_contrast_comment": "EMPIRICAL: Measure |0⟩ vs |±1⟩ contrast"
+    },
+    
+    "strain_tensor": {
+      "d_parallel_coupling": 1e15,
+      "d_parallel_coupling_comment": "EMPIRICAL: Axial strain to D coupling [Hz/strain]",
+      "d_perp_coupling": 0.5e15,
+      "d_perp_coupling_comment": "EMPIRICAL: Transverse strain to D coupling [Hz/strain]", 
+      "e_parameter_coupling": 0.1e15,
+      "e_parameter_coupling_comment": "EMPIRICAL: Strain to E parameter coupling [Hz/strain]"
+    },
+    
+    "leeson_microwave": {
+      "q_factor": 10000,
+      "q_factor_comment": "EMPIRICAL: Resonator Q factor from MW source specs",
+      "noise_figure_db": 12.0,
+      "noise_figure_db_comment": "EMPIRICAL: MW amplifier noise figure [dB]",
+      "power_level_dbm": 10.0,
+      "power_level_dbm_comment": "EMPIRICAL: MW output power [dBm]",
+      "flicker_corner_hz": 1000.0,
+      "flicker_corner_hz_comment": "EMPIRICAL: 1/f corner frequency [Hz]",
+      "close_in_corner_hz": 100000.0,
+      "close_in_corner_hz_comment": "EMPIRICAL: 1/f² corner frequency [Hz]"
+    },
+    
+    "sample_specific": {
+      "actual_c13_concentration": 0.011,
+      "actual_c13_concentration_comment": "EMPIRICAL: Measure via NMR or buy certified diamond",
+      "nv_depth": 10e-9,
+      "nv_depth_comment": "EMPIRICAL: Measure via charge state stability or etch-back",
+      "local_strain": 1e-6,
+      "local_strain_comment": "EMPIRICAL: Measure via ODMR splitting",
+      "local_electric_field": 1e3,
+      "local_electric_field_comment": "EMPIRICAL: Measure via Stark shift [V/m]"
+    }
+  },
+  
   "physical_constants": {
     "fundamental": {
       "h": 6.62607015e-34,

@@ -466,9 +466,29 @@ class NVLindblad:
         self.hamiltonian = hamiltonian
         self.spin_ops = hamiltonian.spin_ops
         
-        # Default relaxation parameters if not provided by noise
-        self.default_T1 = SYSTEM.get_constant('nv_center', 'typical_t1')
-        self.default_T2 = SYSTEM.get_constant('nv_center', 'typical_t2')
+        # ULTRA REALISTIC: Calculate default relaxation from empirical parameters
+        # Only use as emergency fallback when noise sources don't provide rates
+        try:
+            # Calculate T1 from empirical phonon coupling
+            phonon_coupling = SYSTEM.get_empirical_param('thermal', 'temperature_fluctuation', 'phonon_coupling_strength')
+            temperature = SYSTEM.get_empirical_param('environmental', 'temperature')
+            energy_gap = SYSTEM.get_constant('nv_center', 'd_gs')
+            k_B = SYSTEM.get_constant('physical', 'boltzmann_constant')
+            
+            n_phonon = 1 / (np.exp(energy_gap / (k_B * temperature)) - 1)
+            self.default_T1 = 1 / (phonon_coupling * energy_gap**3 * (n_phonon + 1))
+            
+            # Calculate T2 from magnetic field environment
+            field_stability = SYSTEM.get_empirical_param('environmental', 'lab_field_drift')
+            gamma_e = SYSTEM.get_constant('nv_center', 'gamma_e')
+            self.default_T2 = 1 / (gamma_e * field_stability)
+            
+        except KeyError:
+            # Absolute emergency fallback
+            import warnings
+            warnings.warn("Using hardcoded T1/T2 - provide empirical thermal and field parameters for accuracy")
+            self.default_T1 = SYSTEM.get_constant('nv_center', 'typical_t1')
+            self.default_T2 = SYSTEM.get_constant('nv_center', 'typical_t2')
         
     def get_lindblad_operators(self, 
                              include_sources: Optional[List[str]] = None) -> List[Tuple[np.ndarray, float]]:
@@ -643,8 +663,8 @@ class NVLindblad:
         if not np.allclose(rho0, rho0.conj().T):
             raise ValueError("Initial density matrix must be Hermitian")
         if not np.isclose(np.trace(rho0), 1.0):
-            warnings.warn(f"Trace of rho0 is {np.trace(rho0)}, normalizing to 1")
-            rho0 = rho0 / np.trace(rho0)
+            raise ValueError(f"Invalid density matrix: trace is {np.trace(rho0):.6f}, must be 1.0. "
+                           f"This indicates a physics error in your initial state preparation.")
             
         # Determine time step
         if dt is None:
@@ -1066,8 +1086,8 @@ class NVSystem:
         else:
             try:
                 phase = float(axis)
-            except:
-                raise ValueError(f"axis must be 'x', 'y', or a phase angle")
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"axis must be 'x', 'y', or a phase angle, got {axis}: {e}")
                 
         return {
             'duration': duration,
@@ -1547,8 +1567,8 @@ if __name__ == "__main__":
     try:
         popt, _ = curve_fit(exp_decay, tau_vals, np.abs(coherences), p0=[0.5, 1e-6])
         print(f"   Fitted T2*: {popt[1]*1e6:.2f} μs")
-    except:
-        print("   T2* fitting failed - coherence decay too fast or irregular")
+    except (RuntimeError, ValueError, TypeError) as e:
+        print(f"   T2* fitting failed - coherence decay too fast or irregular: {e}")
     
     # Performance benchmark
     print("\n5. Running performance benchmark...")

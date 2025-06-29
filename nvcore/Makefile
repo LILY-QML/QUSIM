@@ -28,10 +28,9 @@ help:
 	@echo "  make install           # Install dependencies"
 	@echo ""
 	@echo "Experiment targets:"
-	@echo "  make experiment-minimal # Minimal π-pulse demo (fastest)"
-	@echo "  make experiment-quick   # Quick π-pulse demo"
-	@echo "  make experiment-full    # Full readout experiment"
-	@echo "  make experiment-help    # Show experiment details"
+	@echo "  make experiment-gui      # Interactive GUI (recommended) 🖥️"
+	@echo "  make experiment-notebook # Educational Jupyter notebook 📚"
+	@echo "  make experiment-help     # Show experiment details"
 
 # Documentation targets
 docs: docs-clean
@@ -85,33 +84,29 @@ benchmark:
 	@python core.py --benchmark
 
 # Experiment targets
-experiment-minimal:
-	@echo "Running minimal π-pulse demo..."
-	@echo "==============================="
-	@cd ../experiments && python minimal_demo.py
+experiment-gui:
+	@echo "Starting QUSIM Experiment GUI..."
+	@echo "================================"
+	@cd ../experiments/GUI && python qusim_gui.py
 
-experiment-quick:
-	@echo "Running quick π-pulse experiment..."
-	@echo "==================================="
-	@cd ../experiments && python quick_demo.py
-
-experiment-full:
-	@echo "Running full π-pulse readout experiment..."
-	@echo "=========================================="
-	@cd ../experiments && python pi_pulse_readout.py
+experiment-notebook:
+	@echo "Opening QUSIM Experiment Notebook..."
+	@echo "===================================="
+	@cd ../experiments/notebooks && jupyter notebook QUSIM_Experiments.ipynb
 
 experiment-help:
-	@echo "Available Experiments:"
-	@echo "====================="
-	@echo "  make experiment-minimal  # Minimal π-pulse demo (fastest)"
-	@echo "  make experiment-quick    # Quick π-pulse demo (fast)"
-	@echo "  make experiment-full     # Complete readout experiment"
+	@echo "Available Experiment Interfaces:"
+	@echo "================================"
+	@echo "  make experiment-gui       # Interactive GUI (recommended) 🖥️"
+	@echo "  make experiment-notebook  # Educational Jupyter notebook 📚"
 	@echo ""
 	@echo "Manual execution:"
-	@echo "  cd ../experiments"
-	@echo "  python minimal_demo.py   # Minimal demo (no simulation)"
-	@echo "  python quick_demo.py     # Quick demo (simplified)"
-	@echo "  python pi_pulse_readout.py  # Full experiment (realistic)"
+	@echo "  cd ../experiments/GUI && python qusim_gui.py"
+	@echo "  cd ../experiments/notebooks && jupyter notebook QUSIM_Experiments.ipynb"
+	@echo ""
+	@echo "Features:"
+	@echo "  GUI: Point-and-click, real-time plots, parameter control"
+	@echo "  Notebook: Step-by-step tutorials, physics explanations"
 
 # Clean targets
 clean:

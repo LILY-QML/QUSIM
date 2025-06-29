@@ -368,23 +368,27 @@ Examples:
         if not self.args.pulse_sequence:
             return []
             
+        # Load default Rabi frequency from empirical measurements
+        default_rabi_freq = SYSTEM.get_empirical_param('microwave_system', 'default_rabi_frequency')
+        default_rabi_omega = 2 * np.pi * default_rabi_freq
+        
         # Predefined sequences
         if self.args.pulse_sequence == 'rabi':
             # Rabi oscillation
             return [{
                 'duration': self.args.time,
-                'rabi_frequency': 2 * np.pi * 10e6,  # 10 MHz
+                'rabi_frequency': default_rabi_omega,
                 'phase': 0,
                 'detuning': 0
             }]
         elif self.args.pulse_sequence == 'ramsey':
             # Ramsey sequence
-            pi_2_time = 1 / (4 * 10e6)  # π/2 pulse
+            pi_2_time = np.pi / (2 * default_rabi_omega)  # π/2 pulse from Rabi frequency
             free_evolution = self.args.time - 2 * pi_2_time
             return [
                 {
                     'duration': pi_2_time,
-                    'rabi_frequency': 2 * np.pi * 10e6,
+                    'rabi_frequency': default_rabi_omega,
                     'phase': 0,
                     'detuning': 0
                 },
@@ -396,20 +400,20 @@ Examples:
                 },
                 {
                     'duration': pi_2_time,
-                    'rabi_frequency': 2 * np.pi * 10e6,
+                    'rabi_frequency': default_rabi_omega,
                     'phase': 0,
                     'detuning': 0
                 }
             ]
         elif self.args.pulse_sequence == 'echo':
             # Hahn echo
-            pi_2_time = 1 / (4 * 10e6)
-            pi_time = 1 / (2 * 10e6)
+            pi_2_time = np.pi / (2 * default_rabi_omega)  # π/2 pulse
+            pi_time = np.pi / default_rabi_omega          # π pulse
             tau = (self.args.time - 2 * pi_2_time - pi_time) / 2
             return [
                 {
                     'duration': pi_2_time,
-                    'rabi_frequency': 2 * np.pi * 10e6,
+                    'rabi_frequency': default_rabi_omega,
                     'phase': 0,
                     'detuning': 0
                 },
@@ -421,7 +425,7 @@ Examples:
                 },
                 {
                     'duration': pi_time,
-                    'rabi_frequency': 2 * np.pi * 10e6,
+                    'rabi_frequency': default_rabi_omega,
                     'phase': np.pi/2,  # Y pulse
                     'detuning': 0
                 },
@@ -433,7 +437,7 @@ Examples:
                 },
                 {
                     'duration': pi_2_time,
-                    'rabi_frequency': 2 * np.pi * 10e6,
+                    'rabi_frequency': default_rabi_omega,
                     'phase': 0,
                     'detuning': 0
                 }

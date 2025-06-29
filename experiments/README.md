@@ -1,140 +1,120 @@
 # QUSIM Experiments
 
-This directory contains realistic NV center experiments implemented using the QUSIM simulation framework.
+This directory contains the main interfaces for running NV center experiments using the QUSIM simulation framework.
 
-## Available Experiments
+## 🎯 Main Interfaces
 
-### 1. Minimal π-Pulse Demo (`minimal_demo.py`)
+### 1. **Interactive GUI** (`GUI/qusim_gui.py`) 🖥️
 
-**Description:** Ultra-fast demonstration of core NV physics without full QUSIM simulation:
-- Shows |0⟩ → |±1⟩ state flip with π-pulse
-- Calculates fluorescence contrast (bright vs dark)
-- Includes realistic shot noise
-- **Runtime: ~2 seconds**
+**Description:** Complete graphical interface for all QUSIM experiments:
+- **4 Experiment Types**: Minimal, photons, quick, full simulations
+- **Real-time plotting**: Live visualization of results  
+- **Parameter control**: Adjust B-field, measurements, Rabi frequency
+- **Data export**: Save results and plots
+- **Progress tracking**: See experiment status
 
-**Usage:**
-```bash
-cd experiments
-python minimal_demo.py
-# OR: cd nvcore && make experiment-minimal
-```
-
-### 2. π-Pulse Readout Experiment (`pi_pulse_readout.py`)
-
-**Description:** Complete simulation of a fundamental NV center experiment:
-1. Initialize NV center in |0⟩ ground state
-2. Apply microwave π-pulse to flip to |±1⟩ state  
-3. Optical readout with laser excitation
-4. Detect fluorescence photons
-5. Measure readout fidelity and contrast
-
-**Key Physics:**
-- |0⟩ state is optically bright (high fluorescence)
-- |±1⟩ states are optically dark (low fluorescence)  
-- Realistic photon shot noise
-- Collection and detection efficiency
-- Readout fidelity calculation
+**Features:**
+- Easy point-and-click operation
+- Professional plots with matplotlib
+- Experiment history and logging
+- Parameter optimization tools
 
 **Usage:**
 ```bash
-cd experiments
-python pi_pulse_readout.py
+cd experiments/GUI
+python qusim_gui.py
 ```
 
-**Output:**
-- Photon count histograms (bright vs dark)
-- Population evolution during π-pulse
-- Readout fidelity metrics
-- Experimental summary with SNR
+### 2. **Educational Notebook** (`notebooks/QUSIM_Experiments.ipynb`) 📚
 
-### 2. Quick Demo (`quick_demo.py`)
+**Description:** Comprehensive Jupyter notebook with detailed explanations:
+- **4 Complete Experiments**: From basic π-pulse to full quantum simulation
+- **Physics Background**: Detailed theory and explanations
+- **Step-by-step Code**: Well-documented implementations
+- **Interactive Plots**: Comprehensive visualizations
+- **Educational Content**: Perfect for learning NV physics
 
-**Description:** Simplified version for quick testing and demonstrations.
+**Experiments Included:**
+1. **Minimal π-Pulse Demo** - Foundation physics
+2. **Time-Resolved Photon Counting** - 1 ns resolution readout ⭐
+3. **Parameter Study** - Optimization analysis  
+4. **Full QUSIM Simulation** - Complete quantum dynamics
 
 **Usage:**
 ```bash
-cd experiments  
-python quick_demo.py
+cd experiments/notebooks
+jupyter notebook QUSIM_Experiments.ipynb
 ```
 
-## Experimental Parameters
+## 🔧 How to Run Experiments
 
-### Typical Values:
-- **Magnetic field:** 5-10 mT
-- **π-pulse duration:** ~25-50 ns (depends on Rabi frequency)
-- **Rabi frequency:** 10-20 MHz
-- **Readout time:** 1 μs
-- **Collection efficiency:** 3%
-- **Detector efficiency:** 80%
-
-### Fluorescence Rates:
-- **Bright state (|0⟩):** ~1 MHz
-- **Dark state (|±1⟩):** ~50 kHz  
-- **Background:** ~1 kHz
-
-## Expected Results
-
-### Ideal Case (no noise):
-- **Readout fidelity:** >99%
-- **Contrast:** ~0.9
-- **Clear separation** between bright/dark distributions
-
-### Realistic Case (with noise):
-- **Readout fidelity:** 85-95%
-- **Contrast:** 0.7-0.9
-- **Shot noise** limits single-shot fidelity
-
-## Physics Background
-
-### NV Center States:
+### Option 1: Interactive GUI (Recommended)
+```bash
+cd QUSIM/experiments/GUI
+python qusim_gui.py
 ```
-    |+1⟩  ───────────  Dark (low fluorescence)
-           ≈ 2.87 GHz
-    |0⟩   ───────────  Bright (high fluorescence)  
-           ≈ 2.87 GHz
-    |-1⟩  ───────────  Dark (low fluorescence)
+- Point-and-click interface
+- Real-time plotting
+- Parameter control
+- Save results
+
+### Option 2: Educational Notebook  
+```bash
+cd QUSIM/experiments/notebooks
+jupyter notebook QUSIM_Experiments.ipynb
+```
+- Step-by-step explanations
+- Interactive code cells
+- Physics background
+- Complete tutorials
+
+### Option 3: Command Line (via nvcore)
+```bash
+cd QUSIM/nvcore
+python core.py --help                    # See all options
+python core.py --demo                    # Quick demo
+make experiment-photons                  # Time-resolved photons
+make experiment-help                     # See all experiments
 ```
 
-### Experimental Sequence:
-1. **Initialization:** Laser pumping → |0⟩
-2. **Manipulation:** MW π-pulse → |±1⟩
-3. **Readout:** Laser + photon detection
+## 📊 What You Can Do
 
-### Readout Mechanism:
-- **|0⟩ → excited state → fluorescence** (bright)
-- **|±1⟩ → no optical transition** (dark)
-- **Photon counting** distinguishes states
+### **Time-Resolved Photon Counting** ⭐
+- MW π-pulse at resonance frequency
+- 1 nanosecond time resolution
+- 600 ns readout duration  
+- Realistic count rates (10+ Mcps)
 
-## Customization
+### **Parameter Optimization**
+- Study B-field, laser power, readout time
+- Find optimal collection efficiency
+- Analyze SNR and fidelity trade-offs
 
-### Modify Experimental Parameters:
-```python
-experiment = PiPulseReadoutExperiment(
-    B_field=np.array([0, 0, 0.01]),  # Magnetic field
-    enable_noise=True                # Realistic noise
-)
+### **Full Quantum Simulation**
+- Complete NV Hamiltonian 
+- All 8 noise sources active
+- Lindblad evolution dynamics
+- Arbitrary pulse sequences
 
-# Custom readout parameters
-experiment.readout_time = 2e-6      # 2 μs readout
-experiment.laser_power = 2e-3       # 2 mW laser
-experiment.collection_efficiency = 0.05  # 5% collection
-```
+## 🎯 Physics Highlights
 
-### Add New Experiments:
-1. Copy `pi_pulse_readout.py` as template
-2. Modify pulse sequences and readout
-3. Add to this README
+### NV Center Basics:
+- **Spin-1 quantum system** in diamond
+- **|0⟩ bright, |±1⟩ dark** optical readout
+- **~2.87 GHz zero-field splitting**
+- **Room temperature operation**
 
-## Integration with QUSIM
+### Key Experimental Techniques:
+- **π-pulse manipulation:** |0⟩ ↔ |±1⟩ coherent control
+- **Optical readout:** Single-photon detection
+- **Time-resolved counting:** Nanosecond precision
+- **Noise modeling:** 8 realistic sources
 
-These experiments use the full QUSIM framework:
-- **NV System:** Complete Hamiltonian with noise
-- **Pulse Sequences:** Arbitrary MW control
-- **Noise Modeling:** 8 realistic sources
-- **Optical Physics:** Fluorescence and detection
+## 🚀 Getting Started
 
-## References
+1. **Start with GUI**: Easy point-and-click experiments
+2. **Try Notebook**: Learn the physics step-by-step  
+3. **Explore Parameters**: Optimize your experiments
+4. **Advanced Simulations**: Full quantum dynamics
 
-1. Doherty et al., "The nitrogen-vacancy colour centre in diamond", Physics Reports 528, 1-45 (2013)
-2. Childress et al., "Coherent dynamics of coupled electron and nuclear spin qubits in diamond", Science 314, 281-285 (2006)
-3. Tetienne et al., "Magnetic-field-dependent photodynamics of single NV defects in diamond", New Journal of Physics 14, 103033 (2012)
+Both interfaces give you complete access to QUSIM's NV center simulation capabilities!

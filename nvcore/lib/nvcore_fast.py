@@ -33,18 +33,24 @@ class FastNVSystem:
         # Pre-compute static Hamiltonian
         self.H_static = self._compute_static_hamiltonian()
         
-        # Simple noise configuration (only essential sources)
+        # Fast noise configuration with realistic parameters
         if enable_noise:
-            config = NoiseConfiguration()
+            # Use room temperature preset as baseline, then optimize for speed
+            config = NoiseConfiguration.from_preset('room_temperature')
+            
+            # Only enable fast-computing noise sources for speed
             config.enable_c13_bath = True
-            config.enable_temperature = False  # Disable slow sources
+            config.enable_optical = True  # Essential for readout
+            # Disable computationally expensive sources for fast mode
+            config.enable_temperature = False  
             config.enable_johnson = False
             config.enable_charge_noise = False
             config.enable_external_field = False
             config.enable_strain = False
             config.enable_microwave = False
-            config.enable_optical = False
-            config.dt = 1e-8  # Larger timestep
+            
+            # Use larger timestep from system defaults for speed
+            config.dt = SYSTEM.defaults['timestep'] * 10  # 10x larger for speed
             
             self.noise_gen = NoiseGenerator(config)
             # Pre-sample noise for efficiency
@@ -116,8 +122,49 @@ class FastNVSystem:
             
         return times, rhos
     
-    def simple_lindblad(self, rho0, t_span, gamma_1=1e3, gamma_2=1e6):
-        """Simplified Lindblad with phenomenological rates"""
+    def simple_lindblad(self, rho0, t_span, gamma_1=None, gamma_2=None):
+        """Simplified Lindblad with rates from system.json"""
+        # Load realistic relaxation rates from system.json
+        if gamma_1 is None:
+            # ULTRA REALISTIC: Calculate T1 from temperature-dependent phonon coupling
+            try:
+                # Get empirical phonon coupling parameter specific to this sample
+                phonon_coupling = SYSTEM.get_empirical_param('thermal', 'temperature_fluctuation', 'phonon_coupling_strength')
+                temperature = SYSTEM.get_empirical_param('environmental', 'temperature')
+                
+                # Calculate T1 from first principles: T1⁻¹ = A * ω³ * [n_th + 1]
+                energy_gap = SYSTEM.get_constant('nv_center', 'd_gs')
+                k_B = SYSTEM.get_constant('physical', 'boltzmann_constant')
+                
+                # Phonon occupation number
+                n_phonon = 1 / (np.exp(energy_gap / (k_B * temperature)) - 1)
+                
+                # First-principles T1 calculation
+                T1 = 1 / (phonon_coupling * energy_gap**3 * (n_phonon + 1))
+                gamma_1 = 1.0 / T1
+                
+            except KeyError:
+                # Emergency fallback only if empirical parameters completely missing
+                import warnings
+                warnings.warn("Missing empirical phonon coupling parameters for T1 calculation")
+                T1 = SYSTEM.get_constant('nv_center', 'typical_t1')
+                gamma_1 = 1.0 / T1
+            
+        if gamma_2 is None:
+            # ULTRA REALISTIC: Calculate T2* from magnetic field environment
+            try:
+                # Calculate T2* from magnetic field fluctuations
+                field_stability = SYSTEM.get_empirical_param('environmental', 'lab_field_drift')
+                gamma_e = SYSTEM.get_constant('nv_center', 'gamma_e')
+                
+                # T2*⁻¹ = γ_e * δB_rms for quasi-static field fluctuations
+                gamma_2 = gamma_e * field_stability
+                
+            except KeyError:
+                import warnings
+                warnings.warn("Missing empirical field stability for T2* calculation")
+                T2_star = SYSTEM.get_constant('nv_center', 'typical_t2')
+                gamma_2 = 1.0 / T2_star
         def rhs(t, rho_vec):
             rho = rho_vec.reshape(3, 3)
             

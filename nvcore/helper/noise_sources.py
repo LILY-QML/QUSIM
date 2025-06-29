@@ -38,6 +38,10 @@ class SystemConfig:
         """Get a noise parameter value"""
         return self.noise_params[category][subcategory][name]
     
+    def get_empirical_param(self, category: str, name: str) -> float:
+        """Get an empirical parameter value that must be measured"""
+        return self._config['empirical_parameters'][category][name]
+    
     def get_preset(self, preset_name: str) -> Dict[str, Any]:
         """Get an experimental preset configuration"""
         return self.presets[preset_name]
@@ -544,7 +548,10 @@ class OpticalNoise(NoiseSource):
                 1.0 + decay * (self._intensity_factor - 1.0) + 
                 np.sqrt(1 - decay**2) * noise
             )
-            factors[i] = max(0.1, self._intensity_factor)
+            # ULTRA REALISTIC: Allow full range of intensity fluctuations
+            # In real experiments, lasers can have complete dropouts or saturation
+            # Only enforce physical constraint (no negative intensity)
+            factors[i] = max(0.0, self._intensity_factor)
             
         return factors[0] if n_samples == 1 else factors
     
