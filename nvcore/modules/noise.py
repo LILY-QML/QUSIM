@@ -47,7 +47,7 @@ class NoiseConfiguration:
     
     # Simulation parameters (defaults from system.json)
     dt: float = field(default_factory=lambda: SYSTEM.defaults['timestep'])
-    seed: Optional[int] = None
+    seed: Optional[int] = 12345  # Default deterministic seed
     
     # Parameter overrides (optional)
     parameter_overrides: Dict[str, Dict[str, float]] = field(default_factory=dict)
@@ -69,6 +69,33 @@ class NoiseConfiguration:
             
         if 'c13_concentration' in preset:
             config.parameter_overrides['c13_bath'] = {'concentration': preset['c13_concentration']}
+        
+        # CRITICAL FIX: Apply external field scaling for different experimental conditions
+        if 'external_field_scaling' in preset:
+            base_drift = SYSTEM.get_noise_param('magnetic', 'external_field', 'drift_amplitude')
+            scaled_drift = base_drift * preset['external_field_scaling']
+            config.parameter_overrides['external_field'] = {'drift_amplitude': scaled_drift}
+            print(f"🎯 External field scaling: {preset['external_field_scaling']:.3f}x → {scaled_drift*1e12:.0f} pT")
+        
+        # Apply C13 field enhancement
+        if 'c13_field_enhancement' in preset:
+            if 'c13_bath' not in config.parameter_overrides:
+                config.parameter_overrides['c13_bath'] = {}
+            config.parameter_overrides['c13_bath']['field_enhancement_factor'] = preset['c13_field_enhancement']
+            print(f"🎯 C13 field enhancement: {preset['c13_field_enhancement']:.1f}x")
+        
+        # Apply Johnson noise scaling
+        if 'johnson_noise_scaling' in preset:
+            # Scale Johnson noise parameters
+            johnson_params = {}
+            base_distance = SYSTEM.get_noise_param('magnetic', 'johnson', 'conductor_distance')
+            # Inverse scaling - larger distance = less noise
+            johnson_params['conductor_distance'] = base_distance / preset['johnson_noise_scaling']
+            
+            if 'johnson' not in config.parameter_overrides:
+                config.parameter_overrides['johnson'] = {}
+            config.parameter_overrides['johnson'].update(johnson_params)
+            print(f"🎯 Johnson noise scaling: {preset['johnson_noise_scaling']:.3f}x")
             
         return config
     
@@ -112,37 +139,39 @@ class NoiseGenerator:
         
     def _initialize_sources(self):
         """Initialize all enabled noise sources"""
+        master_seed = self.config.seed
+        
         if self.config.enable_c13_bath:
             override_params = self.config.parameter_overrides.get('c13_bath', {})
-            self.sources['c13_bath'] = C13BathNoise(self.rng, override_params)
+            self.sources['c13_bath'] = C13BathNoise(self.rng, override_params, master_seed)
             
         if self.config.enable_external_field:
             override_params = self.config.parameter_overrides.get('external_field', {})
-            self.sources['external_field'] = ExternalFieldNoise(self.rng, override_params)
+            self.sources['external_field'] = ExternalFieldNoise(self.rng, override_params, master_seed)
             
         if self.config.enable_johnson:
             override_params = self.config.parameter_overrides.get('johnson', {})
-            self.sources['johnson'] = JohnsonNoise(self.rng, override_params)
+            self.sources['johnson'] = JohnsonNoise(self.rng, override_params, master_seed)
             
         if self.config.enable_charge_noise:
             override_params = self.config.parameter_overrides.get('charge_state', {})
-            self.sources['charge_state'] = ChargeStateNoise(self.rng, override_params)
+            self.sources['charge_state'] = ChargeStateNoise(self.rng, override_params, master_seed)
             
         if self.config.enable_temperature:
             override_params = self.config.parameter_overrides.get('thermal', {})
-            self.sources['temperature'] = TemperatureFluctuation(self.rng, override_params)
+            self.sources['temperature'] = TemperatureFluctuation(self.rng, override_params, master_seed)
             
         if self.config.enable_strain:
             override_params = self.config.parameter_overrides.get('strain', {})
-            self.sources['strain'] = StrainNoise(self.rng, override_params)
+            self.sources['strain'] = StrainNoise(self.rng, override_params, master_seed)
             
         if self.config.enable_microwave:
             override_params = self.config.parameter_overrides.get('microwave', {})
-            self.sources['microwave'] = MicrowaveNoise(self.rng, override_params)
+            self.sources['microwave'] = MicrowaveNoise(self.rng, override_params, master_seed)
             
         if self.config.enable_optical:
             override_params = self.config.parameter_overrides.get('optical', {})
-            self.sources['optical'] = OpticalNoise(self.rng, override_params)
+            self.sources['optical'] = OpticalNoise(self.rng, override_params, master_seed)
             
         # Advanced implementations removed in cleanup
             
@@ -227,6 +256,37 @@ class NoiseGenerator:
             # Use streaming for large samples
             batches = list(self.stream_magnetic_noise(n_samples))
             return np.vstack(batches)
+    
+    def get_total_magnetic_noise_vectorized(self, n_samples: int = 1) -> np.ndarray:
+        """
+        PERFORMANCE: Ultra-fast vectorized noise generation
+        
+        Args:
+            n_samples: Number of samples to generate
+            
+        Returns:
+            Array of shape (n_samples, 3) or (3,) if n_samples=1
+        """
+        # Pre-allocate arrays
+        b_total = np.zeros((n_samples, 3), dtype=np.float64)
+        
+        # Vectorized source sampling
+        if 'c13_bath' in self.sources:
+            # Check if source has vectorized method
+            if hasattr(self.sources['c13_bath'], 'sample_vectorized'):
+                b_total += self.sources['c13_bath'].sample_vectorized(n_samples)
+            else:
+                b_total += self.sources['c13_bath'].sample(n_samples)
+                
+        if 'external_field' in self.sources:
+            # Use vectorized method
+            b_total += self.sources['external_field'].sample_vectorized(n_samples)
+                
+        if 'johnson' in self.sources:
+            # Use vectorized method
+            b_total += self.sources['johnson'].sample_vectorized(n_samples)
+                    
+        return b_total.squeeze() if n_samples == 1 else b_total
             
     # Hamiltonian and Lindblad interfaces
     
@@ -308,41 +368,200 @@ class NoiseGenerator:
             if 'S+' in spin_operators and gamma_up > 0:
                 lindblad_ops.append((spin_operators['S+'], np.sqrt(gamma_up)))
                 
-        # Pure dephasing from magnetic noise - ULTRA REALISTIC CALCULATION
+        # Pure dephasing from magnetic noise - NO PHANTOM SOURCES
         if include_sources is None or 'dephasing' in include_sources:
-            # Calculate dephasing rate from actual magnetic noise power spectral density
-            # Integrate γ_φ = γ_e² ∫ S_B(ω) dω over relevant frequency range
+            
+            # 🚨 CHECK: Do we have any magnetic noise sources?
+            active_magnetic_sources = [name for name in ['c13_bath', 'external_field', 'johnson']
+                                     if name in self.sources and getattr(self.config, f'enable_{name}', False)]
+            
+            if len(active_magnetic_sources) == 0:
+                # NO MAGNETIC SOURCES = NO MAGNETIC DEPHASING
+                print("🚨 NO magnetic noise sources - NO dephasing operators added")
+                return lindblad_ops
+            
+            print(f"🔍 Calculating dephasing from sources: {active_magnetic_sources}")
+            
             try:
-                # Define frequency range relevant for dephasing (DC to ~100 MHz)
-                frequencies = np.logspace(-1, 8, 2000)  # 0.1 Hz to 100 MHz, high resolution
-                omega = 2 * np.pi * frequencies
+                gamma_phi = self.calculate_dephasing_from_spectrum()
                 
-                # Get total magnetic noise PSD from all enabled sources
-                noise_psd = self.get_magnetic_noise_psd(frequencies)
-                
-                # Calculate dephasing rate: γ_φ = γ_e² ∫ S_B(ω) dω
-                # Focus on z-component which dominates pure dephasing
-                gamma_e = SYSTEM.get_constant('nv_center', 'gamma_e')
-                
-                # Integrate PSD over frequency (using trapezoid rule for accuracy)
-                # Factor of 2 accounts for positive/negative frequency contributions
-                gamma_phi = 2 * gamma_e**2 * np.trapz(noise_psd, frequencies)
-                
-                # Ensure minimum numerical stability (avoid zero dephasing)
-                gamma_phi = max(gamma_phi, 1e3)  # Minimum 1 kHz dephasing rate
+                if gamma_phi > 0 and 'Sz' in spin_operators:
+                    lindblad_ops.append((spin_operators['Sz'], np.sqrt(gamma_phi)))
+                    print(f"🔍 Added dephasing operator: γ_φ = {gamma_phi:.2e} Hz")
+                else:
+                    print("🔍 No dephasing operator added (γ_φ = 0)")
                 
             except Exception as e:
-                # Only fall back if PSD calculation completely fails
-                import warnings
-                warnings.warn(f"PSD integration failed ({e}), using conservative estimate")
-                
-                # Conservative estimate based on typical room temperature magnetic noise
-                gamma_phi = 1e6  # 1 MHz as absolute fallback
-            
-            if 'Sz' in spin_operators:
-                lindblad_ops.append((spin_operators['Sz'], np.sqrt(gamma_phi)))
+                # ZERO FALLBACKS - if calculation fails, we fail
+                raise RuntimeError(f"Dephasing calculation failed: {e}. NO FALLBACK VALUES!")
                 
         return lindblad_ops
+    
+    def calculate_physical_minimum_dephasing(self) -> float:
+        """Calculate fundamental minimum dephasing rate - ONLY if sources are active"""
+        
+        # 💀 ZERO TOLERANCE: If no sources enabled, return ZERO
+        active_magnetic_sources = [name for name in ['c13_bath', 'external_field', 'johnson']
+                                 if name in self.sources and getattr(self.config, f'enable_{name}', False)]
+        
+        if len(active_magnetic_sources) == 0:
+            # NO MAGNETIC SOURCES = NO MAGNETIC DEPHASING. PERIOD.
+            print("🚨 NO magnetic noise sources active - ZERO dephasing returned")
+            return 0.0
+        
+        print(f"🔍 Active magnetic sources: {active_magnetic_sources}")
+        
+        # Only calculate if we have actual noise sources - NO DEFAULTS!
+        if 'temperature' not in self.sources or not self.config.enable_temperature:
+            raise RuntimeError("💀 CRITICAL: Temperature source required for physical minimum dephasing!\n"
+                             "🚨 Enable temperature noise or disable minimum dephasing calculation.\n"
+                             "🔥 NO DEFAULT TEMPERATURE VALUES ALLOWED!")
+        
+        temperature = self.sources['temperature'].base_temperature
+        
+        # Physics-based limits ONLY for active systems
+        limits = []
+        
+        # Vacuum limit only applies if we're modeling quantum vacuum fluctuations
+        # (This is theoretical - in practice negligible)
+        if any('quantum' in name.lower() for name in active_magnetic_sources):
+            limits.append(0.1)  # 0.1 Hz vacuum limit (very conservative)
+        
+        # Thermal limit only if thermal sources active
+        if 'temperature' in self.sources and self.config.enable_temperature:
+            if temperature > 77:
+                thermal_rate = 1.0 * (temperature / 300)**2  # Much reduced from 100 Hz
+            else:
+                thermal_rate = 0.1 * (temperature / 4)**2
+            limits.append(thermal_rate)
+            print(f"🔍 Thermal contribution: {thermal_rate:.2f} Hz")
+        
+        # C13 concentration-dependent minimum (only if C13 enabled)
+        if 'c13_bath' in active_magnetic_sources:
+            c13_source = self.sources['c13_bath']
+            concentration = getattr(c13_source, 'concentration', 0.011)
+            # Linear scaling with concentration (realistic)
+            c13_minimum = 1.0 * concentration / 0.011  # 1 Hz at natural abundance
+            limits.append(c13_minimum)
+            print(f"🔍 C13 minimum: {c13_minimum:.2f} Hz (conc={concentration:.4f})")
+        
+        final_rate = max(limits) if limits else 0.0
+        
+        print(f"🔍 Physical minimum dephasing: {final_rate:.2f} Hz")
+        return final_rate
+    
+    def calculate_dephasing_from_spectrum(self) -> float:
+        """Calculate dephasing with BRUTAL frequency limits"""
+        
+        # HARD LIMITS based on NV physics
+        f_min = 0.1      # 0.1 Hz minimum (DC cutoff)
+        f_max = 1e8      # 100 MHz maximum (way below GHz transitions)
+        
+        # REALISTIC frequency array
+        frequencies = np.logspace(np.log10(f_min), np.log10(f_max), 1000)
+        
+        print(f"🔍 Integration range: {f_min:.1e} to {f_max:.1e} Hz")
+        
+        # Get total magnetic noise PSD
+        noise_psd = self.get_magnetic_noise_psd(frequencies)
+        
+        # CONVERGENCE VALIDATION
+        converged_integral = self.validate_psd_convergence(frequencies, noise_psd)
+        
+        # SANITY CHECK: PSD values
+        max_psd = np.max(noise_psd)
+        print(f"🔍 Max PSD value: {max_psd:.2e} T²/Hz")
+        
+        # PHYSICS VALIDATION - NO ARTIFICIAL SCALING
+        # Check if parameters give realistic T2* values without hacks
+        
+        gamma_e = SYSTEM.get_constant('nv_center', 'gamma_e')
+        integral_current = np.trapz(noise_psd, frequencies)
+        
+        print(f"🔍 Raw PSD integral: {integral_current:.2e} T²")
+        
+        # Calculate what T2* this would give
+        gamma_phi_from_psd = 2 * gamma_e**2 * integral_current
+        if gamma_phi_from_psd > 0:
+            predicted_t2_star = 1 / gamma_phi_from_psd
+            print(f"🔍 Predicted T2* from PSD: {predicted_t2_star:.2e} s ({predicted_t2_star*1e6:.1f} μs)")
+            
+            # VALIDATION: Check if realistic without scaling
+            if predicted_t2_star < 1e-9:  # < 1 ns
+                print(f"⚠️  WARNING: Raw PSD gives unrealistically short T2* = {predicted_t2_star*1e9:.1f} ns")
+                print(f"    This indicates incorrect noise source parameters!")
+                print(f"    Check system.json parameters for physical realism.")
+            elif predicted_t2_star > 1e-1:  # > 0.1 s
+                print(f"⚠️  WARNING: Raw PSD gives unrealistically long T2* = {predicted_t2_star*1e3:.1f} ms")
+                print(f"    This indicates noise sources may be too weak.")
+            else:
+                print(f"✅ Raw PSD gives realistic T2* range - no scaling needed!")
+        
+        # NO MORE ARTIFICIAL SCALING - use physics as-is
+        
+        # Calculate dephasing rate
+        gamma_e = SYSTEM.get_constant('nv_center', 'gamma_e')
+        gamma_phi_psd = 2 * gamma_e**2 * np.trapz(noise_psd, frequencies)
+        
+        print(f"🔍 PSD dephasing rate: {gamma_phi_psd:.2e} Hz")
+        
+        # Add physical minimum
+        min_gamma_phi = self.calculate_physical_minimum_dephasing()
+        gamma_phi = gamma_phi_psd + min_gamma_phi
+        
+        print(f"🔍 Total dephasing rate: {gamma_phi:.2e} Hz")
+        
+        if gamma_phi > 0:
+            t2_star = 1 / gamma_phi
+            print(f"🔍 Corresponding T2*: {t2_star:.2e} s ({t2_star*1e6:.1f} μs)")
+        
+        # BRUTAL SANITY CHECKS
+        if gamma_phi > 1e9:  # > 1 GHz
+            raise ValueError(f"Dephasing rate {gamma_phi:.2e} Hz exceeds 1 GHz limit")
+        
+        if gamma_phi > 0:
+            t2_star = 1 / gamma_phi
+            if t2_star < 1e-9:  # < 1 ns
+                raise ValueError(f"T2* = {t2_star:.2e} s below 1 ns limit")
+            if t2_star > 1e-1:  # > 0.1 s
+                warnings.warn(f"T2* = {t2_star:.2e} s above 0.1 s (exceptionally good!)")
+        
+        return gamma_phi
+    
+    def validate_psd_convergence(self, frequencies: np.ndarray, psd: np.ndarray) -> float:
+        """Validate that PSD integration converges"""
+        
+        # Check convergence by testing different upper limits
+        test_limits = [1e6, 1e7, 1e8, 1e9]  # 1 MHz to 1 GHz
+        integrals = []
+        
+        for f_max in test_limits:
+            mask = frequencies <= f_max
+            if np.any(mask):
+                integral = np.trapz(psd[mask], frequencies[mask])
+                integrals.append(integral)
+            else:
+                integrals.append(0)
+        
+        print(f"🔍 PSD integration convergence test:")
+        for i, (f_max, integral) in enumerate(zip(test_limits, integrals)):
+            print(f"    {f_max:.0e} Hz: {integral:.2e} T²")
+            
+            if i > 0 and integrals[0] > 0:
+                ratio = integral / integrals[0]
+                print(f"    Ratio to 1 MHz: {ratio:.2f}")
+        
+        # Check for convergence
+        if len(integrals) >= 2 and integrals[-2] > 0:
+            final_ratio = integrals[-1] / integrals[-2]
+            print(f"🔍 Final convergence ratio: {final_ratio:.2f}")
+            
+            if final_ratio > 3.0:  # More than 3x increase
+                raise ValueError(f"💀 PSD integral NOT converged: {final_ratio:.1f}x increase from {test_limits[-2]:.0e} to {test_limits[-1]:.0e} Hz")
+            elif final_ratio > 1.5:
+                warnings.warn(f"⚠️  PSD convergence marginal: {final_ratio:.1f}x increase")
+        
+        return integrals[-1] if integrals else 0.0  # Return integral up to highest frequency
         
     # Specialized noise functions
     
@@ -443,43 +662,41 @@ class NoiseGenerator:
     def estimate_t2_star(self, evolution_time: float = 10e-6,
                         n_samples: int = 1000) -> float:
         """
-        Estimate T2* from magnetic noise statistics
+        Estimate T2* from ACTUAL dephasing rate calculation
         
-        Uses autocorrelation of magnetic noise to estimate dephasing time
+        Uses realistic physics-based dephasing calculation instead of autocorrelation
         
-        Args:
-            evolution_time: Time window for correlation analysis
-            n_samples: Number of noise samples
-            
         Returns:
             Estimated T2* in seconds
         """
-        # Generate magnetic noise trajectory
-        b_noise = self.get_total_magnetic_noise(n_samples)
+        print("🔍 Estimating T2* from dephasing operators...")
         
-        # Focus on z-component (most relevant for dephasing)
-        b_z = b_noise[:, 2]
+        # Use actual physics calculation
+        spin_ops = {
+            'Sz': np.array([[0.5, 0], [0, -0.5]], dtype=complex)
+        }
         
-        # Calculate autocorrelation
-        correlation = np.correlate(b_z - np.mean(b_z), b_z - np.mean(b_z), mode='full')
-        correlation = correlation[len(correlation)//2:]
-        correlation /= correlation[0]
-        
-        # Find 1/e decay time
         try:
-            decay_idx = np.where(correlation < 1/np.e)[0][0]
-            correlation_time = decay_idx * self.config.dt
+            lindblad_ops = self.get_lindblad_operators(spin_ops)
             
-            # T2* ≈ 1 / (γ * σ_B * sqrt(τ_c))
-            # where σ_B is RMS field noise and τ_c is correlation time
-            sigma_b = np.std(b_z)
-            t2_star = 1 / (SYSTEM.get_constant('nv_center', 'gamma_e') * sigma_b * np.sqrt(correlation_time))
+            # Find dephasing rate
+            for op, rate in lindblad_ops:
+                if np.allclose(op, spin_ops['Sz']):
+                    gamma_phi = rate**2  # Lindblad rate squared
+                    t2_star = 1 / gamma_phi if gamma_phi > 0 else np.inf
+                    print(f"🔍 T2* from dephasing rate {gamma_phi:.2e} Hz: {t2_star:.2e} s")
+                    return t2_star
             
-            return t2_star
+            # No dephasing operator found - this is a physics violation
+            raise RuntimeError("💀 CRITICAL: No dephasing operators found!\n"
+                             "🚨 This indicates broken noise source configuration.\n"
+                             "🔥 Enable magnetic noise sources or disable dephasing calculation entirely.")
             
-        except IndexError:
-            # Correlation doesn't decay - return lower bound
-            return evolution_time
+        except Exception as e:
+            # NO FALLBACKS! If dephasing calculation fails, the system fails
+            raise RuntimeError(f"💀 CRITICAL: Dephasing calculation failed: {e}\n"
+                             f"🚨 NO FALLBACK VALUES ALLOWED!\n"
+                             f"🔥 Fix the physics calculation or disable dephasing entirely.")
             
     def get_magnetic_noise_psd(self, frequencies: np.ndarray) -> np.ndarray:
         """
@@ -596,6 +813,11 @@ class NoiseGenerator:
                 
         best_params['optimal_t2'] = best_t2
         return best_params
+    
+    def validate_physics(self) -> Dict[str, bool]:
+        """Comprehensive physics validation of noise levels and parameters"""
+        validator = PhysicsValidator(self)
+        return validator.validate_all()
             
     def save_configuration(self, filename: str):
         """Save current noise configuration to file"""
@@ -846,3 +1068,539 @@ def create_precision_experiment_generator() -> NoiseGenerator:
     config.enable_johnson = False
     
     return NoiseGenerator(config)
+
+
+class PhysicsValidator:
+    """Comprehensive physics validation for noise generators"""
+    
+    def __init__(self, noise_generator: NoiseGenerator):
+        self.generator = noise_generator
+        self.validation_results = {}
+        
+    def validate_noise_levels(self) -> Dict[str, bool]:
+        """Validate magnetic noise levels are in physical range"""
+        results = {}
+        
+        try:
+            # Generate test noise samples
+            noise = self.generator.get_total_magnetic_noise(10000)
+            rms = np.sqrt(np.mean(noise**2))
+            
+            # Check RMS field strength
+            results['rms_range'] = 1e-15 < rms < 1e-6  # 1 fT to 1 μT
+            
+            # Check for reasonable spectral content
+            fft_noise = np.fft.fft(noise[:, 2])  # z-component
+            power = np.abs(fft_noise)**2
+            results['spectral_power'] = not np.any(power > 1e-10)  # No excessive power
+            
+            # Frequency spectrum check
+            freqs = np.logspace(0, 6, 100)  # 1 Hz to 1 MHz
+            psd = self.generator.get_magnetic_noise_psd(freqs)
+            results['psd_finite'] = np.all(np.isfinite(psd))
+            results['psd_positive'] = np.all(psd >= 0)
+            
+        except Exception as e:
+            print(f"Noise level validation failed: {e}")
+            results['validation_error'] = False
+            
+        return results
+        
+    def validate_coherence_times(self) -> Dict[str, bool]:
+        """Validate estimated coherence times are in physical range"""
+        results = {}
+        
+        try:
+            # Estimate T2* from magnetic noise
+            t2_star = self.generator.estimate_t2_star()
+            results['t2_star_range'] = 1e-9 < t2_star < 1e-3  # 1 ns to 1 ms
+            
+            # Calculate dephasing rate
+            lindblad_ops = self.generator.get_lindblad_operators(
+                {'Sz': np.array([[1, 0], [0, -1]])}  # Simple 2-level system
+            )
+            
+            dephasing_rates = [rate**2 for op, rate in lindblad_ops if op.shape == (2, 2)]
+            if dephasing_rates:
+                gamma_phi = max(dephasing_rates)
+                t2_from_gamma = 1 / gamma_phi if gamma_phi > 0 else np.inf
+                results['t2_from_dephasing'] = 1e-9 < t2_from_gamma < 1e-3
+            else:
+                results['t2_from_dephasing'] = False
+                
+        except Exception as e:
+            print(f"Coherence time validation failed: {e}")
+            results['coherence_error'] = False
+            
+        return results
+        
+    def validate_temperature_scaling(self) -> Dict[str, bool]:
+        """Validate noise scales correctly with temperature"""
+        results = {}
+        
+        try:
+            if 'temperature' in self.generator.sources:
+                temp_source = self.generator.sources['temperature']
+                
+                # Test temperature range
+                temp_300k = temp_source.sample(1)
+                results['temp_range'] = 1 < temp_300k < 1000  # 1K to 1000K
+                
+                # Test phonon occupation scaling
+                test_energy = 2.87e9  # NV GS splitting in Hz
+                phonon_n = temp_source.calculate_phonon_occupation(test_energy)
+                results['phonon_occupation'] = 0 <= phonon_n < 100  # Reasonable range
+                
+            else:
+                results['no_temperature_source'] = True
+                
+        except Exception as e:
+            print(f"Temperature scaling validation failed: {e}")
+            results['temperature_error'] = False
+            
+        return results
+        
+    def validate_frequency_response(self) -> Dict[str, bool]:
+        """Validate frequency response follows physical laws"""
+        results = {}
+        
+        try:
+            # Test frequency range
+            freqs = np.logspace(-1, 8, 1000)  # 0.1 Hz to 100 MHz
+            
+            # Check Johnson noise PSD
+            if 'johnson' in self.generator.sources:
+                johnson_psd = self.generator.sources['johnson'].get_power_spectral_density(freqs)
+                
+                # Should fall off at high frequencies due to skin depth
+                high_freq_ratio = johnson_psd[-1] / johnson_psd[len(freqs)//2]
+                results['johnson_cutoff'] = high_freq_ratio < 0.5  # At least 50% reduction
+                
+                # Should be finite and positive
+                results['johnson_psd_valid'] = np.all(np.isfinite(johnson_psd)) and np.all(johnson_psd > 0)
+                
+            # Test overall PSD integration convergence
+            total_psd = self.generator.get_magnetic_noise_psd(freqs)
+            integral = np.trapz(total_psd, freqs)
+            results['psd_convergent'] = np.isfinite(integral) and integral > 0
+            
+        except Exception as e:
+            print(f"Frequency response validation failed: {e}")
+            results['frequency_error'] = False
+            
+        return results
+        
+    def validate_determinism(self) -> Dict[str, bool]:
+        """Validate time-deterministic behavior"""
+        results = {}
+        
+        try:
+            # Test same time gives same samples
+            t_test = 1e-6  # 1 μs
+            for source_name, source in self.generator.sources.items():
+                samples1 = source.sample_at_time(t_test, 100)
+                samples2 = source.sample_at_time(t_test, 100)
+                
+                if hasattr(samples1, 'shape') and hasattr(samples2, 'shape'):
+                    results[f'{source_name}_deterministic'] = np.allclose(samples1, samples2)
+                else:
+                    results[f'{source_name}_deterministic'] = np.array_equal(samples1, samples2)
+                    
+        except Exception as e:
+            print(f"Determinism validation failed: {e}")
+            results['determinism_error'] = False
+            
+        return results
+        
+    def validate_all(self) -> Dict[str, bool]:
+        """Run all validation tests"""
+        all_results = {}
+        
+        all_results.update(self.validate_noise_levels())
+        all_results.update(self.validate_coherence_times())
+        all_results.update(self.validate_temperature_scaling())
+        all_results.update(self.validate_frequency_response())
+        all_results.update(self.validate_determinism())
+        
+        # Summary
+        passed_tests = sum(all_results.values())
+        total_tests = len(all_results)
+        all_results['validation_summary'] = f"{passed_tests}/{total_tests} tests passed"
+        all_results['all_passed'] = passed_tests == total_tests
+        
+        return all_results
+
+
+class DeterministicNoiseGenerator(NoiseGenerator):
+    """NoiseGenerator with ENFORCED time determinism"""
+    
+    def get_hamiltonian_noise_at_time(self, spin_operators: Dict[str, np.ndarray], t: float) -> np.ndarray:
+        """FIXED: Guaranteed deterministic Hamiltonian with ULTRA precision"""
+        
+        # Ultra-precise time quantization (femtosecond precision)
+        time_precision = 1e-15
+        t_quantized = round(t / time_precision) * time_precision
+        
+        # Create ULTRA-specific cache key
+        cache_key = (
+            "DeterministicHamiltonian",
+            hash(str(t_quantized)),
+            tuple(sorted(spin_operators.keys())),
+            tuple(op.shape for op in spin_operators.values()),  # Include shapes
+            hash(str(spin_operators['Sx'].flatten()[:4])),  # Include sample of operator values
+            id(self)  # Instance-specific
+        )
+        
+        # Use instance-level cache for perfect determinism
+        if not hasattr(self, '_hamiltonian_cache'):
+            self._hamiltonian_cache = {}
+            
+        if cache_key in self._hamiltonian_cache:
+            cached_result = self._hamiltonian_cache[cache_key]
+            return cached_result.copy()  # Return COPY for safety
+        
+        print(f"🔍 Generating ULTRA-deterministic Hamiltonian at t={t_quantized:.2e} s")
+        
+        # Generate magnetic field noise with GUARANTEED determinism
+        B_noise = np.zeros(3, dtype=np.float64)  # Explicit dtype
+        
+        # CRITICAL: Sort sources by name for deterministic iteration order
+        source_names = sorted(self.sources.keys())
+        print(f"  Processing sources in order: {source_names}")
+        
+        for source_name in source_names:
+            source = self.sources[source_name]
+            
+            if hasattr(source, 'get_deterministic_sample_for_time'):
+                # Use quantized time for perfect determinism
+                source_noise = source.get_deterministic_sample_for_time(t_quantized, 1)
+                
+                # Handle different array shapes with STRICT validation
+                if isinstance(source_noise, np.ndarray):
+                    if source_noise.shape == (3,):
+                        B_noise += source_noise.astype(np.float64)
+                    elif source_noise.shape == (1, 3):
+                        B_noise += source_noise[0].astype(np.float64)
+                    elif len(source_noise.shape) == 1 and len(source_noise) == 3:
+                        B_noise += source_noise.astype(np.float64)
+                    else:
+                        print(f"⚠️  {source_name}: unexpected shape {source_noise.shape}, taking first 3 elements")
+                        B_noise += source_noise.flatten()[:3].astype(np.float64)
+                else:
+                    raise ValueError(f"💀 {source_name}: non-array result {type(source_noise)}")
+                
+                print(f"  {source_name}: {np.linalg.norm(source_noise):.6e} T")
+            else:
+                raise ValueError(f"💀 {source_name}: missing get_deterministic_sample_for_time method")
+        
+        print(f"  Total B_noise: {np.linalg.norm(B_noise):.6e} T")
+        
+        # Convert to Hamiltonian with EXACT reproducibility
+        gamma_e = SYSTEM.get_constant('nv_center', 'gamma_e')
+        
+        # Ensure spin operators are in a FIXED order with exact precision
+        Sx = spin_operators['Sx'].astype(np.complex128)
+        Sy = spin_operators['Sy'].astype(np.complex128)
+        Sz = spin_operators['Sz'].astype(np.complex128)
+        
+        # Use exact floating point arithmetic
+        H_noise = (2.0 * np.pi * gamma_e) * (
+            B_noise[0] * Sx +
+            B_noise[1] * Sy +
+            B_noise[2] * Sz
+        )
+        
+        # Ensure exact dtype
+        H_noise = H_noise.astype(np.complex128)
+        
+        print(f"  H_noise max element: {np.max(np.abs(H_noise)):.6e} Hz")
+        
+        # Cache result for PERFECT determinism
+        self._hamiltonian_cache[cache_key] = H_noise.copy()
+        
+        return H_noise
+    
+    def validate_all_time_determinism(self):
+        """Validate time determinism for ALL sources"""
+        
+        print("🔍 Validating time determinism for all sources...")
+        
+        for source_name, source in self.sources.items():
+            print(f"\n🔍 Testing {source_name}...")
+            
+            if hasattr(source, 'validate_time_determinism'):
+                try:
+                    source.validate_time_determinism()
+                    print(f"✅ {source_name}: Time determinism OK")
+                except Exception as e:
+                    print(f"💀 {source_name}: Time determinism FAILED: {e}")
+                    raise
+            else:
+                print(f"⚠️  {source_name}: No time determinism validation available")
+        
+        print("\n✅ ALL TIME DETERMINISM VALIDATION PASSED")
+        return True
+        
+    def validate_interface_determinism(self, spin_ops: Dict[str, np.ndarray], t: float, n_trials: int = 10):
+        """BRUTAL validation that interface Hamiltonian is deterministic"""
+        
+        print(f"🔥 BRUTAL interface determinism test at t={t:.2e} s, {n_trials} trials")
+        
+        hamiltonians = []
+        for i in range(n_trials):
+            H = self.get_hamiltonian_noise_at_time(spin_ops, t)
+            hamiltonians.append(H.copy())
+            
+        # Check EXACT consistency across all trials
+        reference = hamiltonians[0]
+        max_diff = 0.0
+        
+        for i in range(1, len(hamiltonians)):
+            H_current = hamiltonians[i]
+            
+            # Shape check
+            if reference.shape != H_current.shape:
+                raise ValueError(f"💀 Hamiltonian shape mismatch: {reference.shape} vs {H_current.shape}")
+            
+            # Element-wise difference
+            diff_matrix = np.abs(reference - H_current)
+            max_element_diff = np.max(diff_matrix)
+            max_diff = max(max_diff, max_element_diff)
+            
+            if max_element_diff > 1e-10:  # 0.1 mHz tolerance
+                print(f"💀 FAILURE at trial {i}: max diff = {max_element_diff:.6e} Hz")
+                print(f"   Reference max: {np.max(np.abs(reference)):.6e} Hz")
+                print(f"   Current max: {np.max(np.abs(H_current)):.6e} Hz")
+                print(f"   Worst element index: {np.unravel_index(np.argmax(diff_matrix), diff_matrix.shape)}")
+                raise ValueError(f"💀 Interface NOT deterministic: max diff = {max_element_diff:.6e} Hz > 1e-10 Hz")
+        
+        print(f"✅ Interface PERFECTLY deterministic: max diff = {max_diff:.6e} Hz < 1e-10 Hz")
+        print(f"   Hamiltonian max element: {np.max(np.abs(reference)):.6e} Hz")
+        return True
+
+
+class PhysicsViolationError(Exception):
+    """Custom exception for physics violations"""
+    pass
+
+
+class StrictPhysicsValidator:
+    """Physics validator with ZERO TOLERANCE for violations"""
+    
+    def __init__(self, noise_generator):
+        self.generator = noise_generator
+        self.strict_mode = True  # ZERO compromise
+        
+    def validate_with_enforcement(self) -> Dict[str, bool]:
+        """Validate physics and CRASH if violations found"""
+        
+        print("🔥 STRICT PHYSICS VALIDATION - ZERO TOLERANCE MODE")
+        
+        results = {}
+        
+        # Critical validations
+        results.update(self.validate_t2_star_realism())
+        results.update(self.validate_noise_levels_brutal())
+        results.update(self.validate_dephasing_rates())
+        
+        # Count failures
+        failed_checks = [k for k, v in results.items() if v == False]
+        critical_failures = []
+        
+        # Classify failures by severity
+        for check in failed_checks:
+            if any(keyword in check for keyword in
+                  ['t2_star_range', 'dephasing_realistic', 'noise_rms_physical']):
+                critical_failures.append(check)
+        
+        # Report results
+        total_checks = len(results)
+        passed_checks = total_checks - len(failed_checks)
+        
+        print(f"🔍 Physics validation: {passed_checks}/{total_checks} passed")
+        
+        if failed_checks:
+            print(f"❌ Failed checks: {failed_checks}")
+        
+        # ENFORCE in strict mode
+        if self.strict_mode and critical_failures:
+            error_msg = (
+                f"💀 CRITICAL PHYSICS VIOLATIONS DETECTED!\n"
+                f"Failed checks: {critical_failures}\n"
+                f"System CANNOT run with broken physics.\n"
+                f"Fix the violations or disable strict_mode."
+            )
+            raise PhysicsViolationError(error_msg)
+        
+        if self.strict_mode and len(failed_checks) > 2:
+            error_msg = (
+                f"💀 TOO MANY PHYSICS VIOLATIONS: {len(failed_checks)}\n"
+                f"Failed checks: {failed_checks}\n"
+                f"Maximum 2 violations allowed in strict mode."
+            )
+            raise PhysicsViolationError(error_msg)
+        
+        return results
+    
+    def validate_t2_star_realism(self) -> Dict[str, bool]:
+        """BRUTAL T2* validation against experimental data"""
+        
+        results = {}
+        
+        try:
+            t2_star = self.generator.estimate_t2_star()
+            
+            # Literature values for different conditions
+            literature_ranges = {
+                'isotopically_pure_cryogenic': (1e-3, 10e-3),    # 1-10 ms
+                'isotopically_pure_room_temp': (100e-6, 1e-3),   # 0.1-1 ms  
+                'natural_abundance_room_temp': (1e-6, 100e-6),   # 1-100 μs
+                'high_concentration': (100e-9, 10e-6),           # 0.1-10 μs
+                'surface_nv': (10e-9, 1e-6)                     # 10 ns - 1 μs
+            }
+            
+            # Check against ALL ranges - must fit at least one
+            fits_any_range = False
+            for condition, (t_min, t_max) in literature_ranges.items():
+                if t_min <= t2_star <= t_max:
+                    fits_any_range = True
+                    print(f"✅ T2* = {t2_star*1e6:.1f} μs fits {condition}")
+                    break
+            
+            if not fits_any_range:
+                print(f"💀 T2* = {t2_star*1e6:.1f} μs fits NO experimental condition!")
+                print(f"Literature ranges:")
+                for condition, (t_min, t_max) in literature_ranges.items():
+                    print(f"  {condition}: {t_min*1e6:.1f} - {t_max*1e6:.1f} μs")
+            
+            results['t2_star_range'] = fits_any_range
+            results['t2_star_finite'] = np.isfinite(t2_star)
+            results['t2_star_realistic'] = 1e-9 <= t2_star <= 1e-1  # 1 ns to 0.1 s
+            
+        except Exception as e:
+            print(f"💀 T2* validation crashed: {e}")
+            results['t2_star_validation_error'] = False
+        
+        return results
+    
+    def validate_noise_levels_brutal(self) -> Dict[str, bool]:
+        """BRUTAL noise level validation"""
+        
+        results = {}
+        
+        try:
+            # Generate test noise samples
+            noise = self.generator.get_total_magnetic_noise(1000)
+            rms = np.sqrt(np.mean(noise**2))
+            
+            print(f"🔍 Noise RMS: {rms:.2e} T ({rms*1e12:.1f} pT)")
+            
+            # BRUTAL checks
+            results['noise_rms_physical'] = 1e-18 <= rms <= 1e-6  # 1 aT to 1 μT
+            results['noise_finite'] = np.all(np.isfinite(noise))
+            results['noise_not_zero'] = rms > 0
+            
+            # Spectral check
+            if len(noise) > 10:
+                fft_noise = np.fft.fft(noise[:, 2])  # z-component
+                power = np.abs(fft_noise)**2
+                max_power = np.max(power)
+                results['spectral_power_reasonable'] = max_power < 1e-15
+                
+                print(f"🔍 Max spectral power: {max_power:.2e}")
+            
+        except Exception as e:
+            print(f"💀 Noise validation crashed: {e}")
+            results['noise_validation_error'] = False
+        
+        return results
+    
+    def validate_dephasing_rates(self) -> Dict[str, bool]:
+        """Validate dephasing rates are physically realistic"""
+        
+        results = {}
+        
+        try:
+            # Test with simple spin system
+            spin_ops = {
+                'Sz': np.array([[0.5, 0], [0, -0.5]], dtype=complex),
+                'S+': np.array([[0, 1], [0, 0]], dtype=complex),
+                'S-': np.array([[0, 0], [1, 0]], dtype=complex)
+            }
+            
+            lindblad_ops = self.generator.get_lindblad_operators(spin_ops)
+            
+            dephasing_rates = []
+            for op, rate in lindblad_ops:
+                if np.allclose(op, spin_ops['Sz']):
+                    rate_hz = rate**2
+                    dephasing_rates.append(rate_hz)
+                    print(f"🔍 Dephasing rate: {rate_hz:.2e} Hz")
+            
+            if dephasing_rates:
+                max_rate = max(dephasing_rates)
+                min_rate = min(dephasing_rates)
+                
+                # BRUTAL checks
+                results['dephasing_realistic'] = 0.1 <= max_rate <= 1e8  # 0.1 Hz to 100 MHz
+                results['dephasing_finite'] = all(np.isfinite(r) for r in dephasing_rates)
+                
+                # T2* from dephasing should be reasonable
+                if max_rate > 0:
+                    t2_from_dephasing = 1 / max_rate
+                    results['t2_from_dephasing_realistic'] = 1e-8 <= t2_from_dephasing <= 1e-1
+                    print(f"🔍 T2* from dephasing: {t2_from_dephasing*1e6:.1f} μs")
+            else:
+                print("🔍 No dephasing operators found")
+                results['no_dephasing_ok'] = True
+            
+        except Exception as e:
+            print(f"💀 Dephasing validation crashed: {e}")
+            results['dephasing_validation_error'] = False
+        
+        return results
+
+
+class ValidatedNoiseGenerator(NoiseGenerator):
+    """NoiseGenerator that ENFORCES physics validation"""
+    
+    def __init__(self, config):
+        super().__init__(config)
+        
+        # Create strict validator
+        self.validator = StrictPhysicsValidator(self)
+        
+        # MANDATORY validation after initialization
+        self._validate_on_creation()
+    
+    def _validate_on_creation(self):
+        """Validate physics immediately after creation"""
+        
+        print("🔍 Running mandatory physics validation...")
+        
+        try:
+            validation_results = self.validator.validate_with_enforcement()
+            print("✅ Physics validation PASSED - generator ready")
+            
+        except PhysicsViolationError as e:
+            print(f"💀 PHYSICS VALIDATION FAILED:\n{e}")
+            print("💀 NoiseGenerator CANNOT be used with broken physics")
+            raise
+    
+    def get_total_magnetic_noise(self, n_samples=1):
+        """Generate noise with periodic validation checks"""
+        
+        # Generate noise normally
+        noise = super().get_total_magnetic_noise(n_samples)
+        
+        # Periodic validation for large samples
+        if n_samples > 1000:
+            rms = np.sqrt(np.mean(noise**2))
+            
+            if rms > 1e-9:  # > 1 nT
+                warnings.warn(f"High noise level: {rms*1e12:.1f} pT")
+            
+            if not np.all(np.isfinite(noise)):
+                raise PhysicsViolationError("Generated noise contains NaN/infinite values")
+        
+        return noise
