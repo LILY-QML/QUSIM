@@ -118,14 +118,21 @@ class NoiseGenerator:
     Composes multiple noise sources and provides efficient generation methods
     """
     
-    def __init__(self, config: Optional[NoiseConfiguration] = None):
+    def __init__(self, config: NoiseConfiguration, system_coordinator):
         """
         Initialize noise generator
         
         Args:
-            config: Noise configuration object
+            config: Noise configuration object REQUIRED
+            system_coordinator: SystemCoordinator REQUIRED for hyperrealistic noise
         """
-        self.config = config or NoiseConfiguration()
+        if config is None:
+            raise ValueError("NoiseConfiguration REQUIRED - no defaults allowed")
+        if system_coordinator is None:
+            raise ValueError("SystemCoordinator REQUIRED for noise generator - no fallbacks allowed")
+        
+        self.config = config
+        self.system = system_coordinator
         self.rng = np.random.default_rng(self.config.seed)
         
         # Initialize enabled noise sources
@@ -398,67 +405,86 @@ class NoiseGenerator:
         return lindblad_ops
     
     def calculate_physical_minimum_dephasing(self) -> float:
-        """Calculate fundamental minimum dephasing rate - ONLY if sources are active"""
+        """Nur echte physikalische Beiträge - KEINE künstlichen Minima"""
+        if len(self.sources) == 0:
+            return 0.0  # Keine Quellen = Keine Dekohärenz
         
-        # 💀 ZERO TOLERANCE: If no sources enabled, return ZERO
-        active_magnetic_sources = [name for name in ['c13_bath', 'external_field', 'johnson']
-                                 if name in self.sources and getattr(self.config, f'enable_{name}', False)]
+        # Nur fundamentale Quantengrenzen - KEINE künstlichen Faktoren
+        temperature = self.sources.get('temperature', {}).get('base_temperature', 0) if 'temperature' in self.sources else 0
+        if temperature > 0:
+            # Echte thermische Anregungsrate ohne künstliche Faktoren
+            from ...helper.noise_sources import SYSTEM
+            kb_T = SYSTEM.get_constant('fundamental', 'kb') * temperature
+            D = SYSTEM.get_constant('nv_center', 'd_gs')
+            hbar = SYSTEM.get_constant('fundamental', 'hbar')
+            
+            # Spontane Emission Rate: γ = (ω³|μ|²)/(3πε₀ℏc³)
+            # Vereinfacht für NV: thermische Anregungsrate bei T > 0
+            if kb_T > 0:
+                # Boltzmann Besetzung höherer Zustände
+                thermal_population = np.exp(-D*hbar/(kb_T))
+                if thermal_population > 1e-10:  # Nur wenn messbar besetzt
+                    # Echte Übergangsrate ohne willkürliche Faktoren
+                    return D * thermal_population / (2*np.pi*hbar)  # Hz
         
-        if len(active_magnetic_sources) == 0:
-            # NO MAGNETIC SOURCES = NO MAGNETIC DEPHASING. PERIOD.
-            print("🚨 NO magnetic noise sources active - ZERO dephasing returned")
-            return 0.0
+        return 0.0  # Sonst wirklich null
+    
+    def get_correlated_magnetic_noise(self, n_samples: int) -> np.ndarray:
+        """Berücksichtige Kreuz-Korrelationen zwischen Quellen"""
+        # Basis-Rauschen
+        b_c13 = self.sources['c13_bath'].sample(n_samples) if 'c13_bath' in self.sources else 0
+        b_ext = self.sources['external_field'].sample(n_samples) if 'external_field' in self.sources else 0
         
-        print(f"🔍 Active magnetic sources: {active_magnetic_sources}")
-        
-        # Only calculate if we have actual noise sources - NO DEFAULTS!
-        if 'temperature' not in self.sources or not self.config.enable_temperature:
-            raise RuntimeError("💀 CRITICAL: Temperature source required for physical minimum dephasing!\n"
-                             "🚨 Enable temperature noise or disable minimum dephasing calculation.\n"
-                             "🔥 NO DEFAULT TEMPERATURE VALUES ALLOWED!")
-        
-        temperature = self.sources['temperature'].base_temperature
-        
-        # Physics-based limits ONLY for active systems
-        limits = []
-        
-        # Vacuum limit only applies if we're modeling quantum vacuum fluctuations
-        # (This is theoretical - in practice negligible)
-        if any('quantum' in name.lower() for name in active_magnetic_sources):
-            limits.append(0.1)  # 0.1 Hz vacuum limit (very conservative)
-        
-        # Thermal limit only if thermal sources active
-        if 'temperature' in self.sources and self.config.enable_temperature:
-            if temperature > 77:
-                thermal_rate = 1.0 * (temperature / 300)**2  # Much reduced from 100 Hz
+        # Kreuz-Korrelation: External field beeinflusst C13 Dynamik
+        if isinstance(b_c13, np.ndarray) and isinstance(b_ext, np.ndarray):
+            # C13 reagiert auf externe Feldänderungen
+            # ECHTE Korrelationszeit aus SystemCoordinator
+            if self.system is not None:
+                # Echtes Magnetfeld vom System
+                B_field = self.system.get_actual_magnetic_field()
+                B_magnitude = np.linalg.norm(B_field)
+                
+                # Echte physikalische Konstanten
+                gamma_c = self.system.get_physical_constant('gamma_n_13c')
+                larmor_freq = gamma_c * B_magnitude
+                correlation_time = 1.0 / larmor_freq if larmor_freq > 0 else 1e-6
+                
+                # Echte Hyperfein-Kopplung vom N14-Modul
+                if self.system.has_module('n14'):
+                    n14_engine = self.system.get_module('n14')
+                    A_hf = abs(n14_engine.get_hyperfine_parameters()['A_parallel'])
+                else:
+                    # KEINE hardcoded Fallbacks - System muss vollständig sein
+                    raise RuntimeError("N14 module required for hyperrealistic noise calculation!")
+                    
+                correlation_strength = min(0.5, A_hf / (2*np.pi*larmor_freq)) if larmor_freq > 0 else 0.1
             else:
-                thermal_rate = 0.1 * (temperature / 4)**2
-            limits.append(thermal_rate)
-            print(f"🔍 Thermal contribution: {thermal_rate:.2f} Hz")
+                # NO LEGACY SUPPORT - SystemCoordinator is required
+                raise ValueError("SystemCoordinator required for noise correlations - no legacy support")
+            
+            # Faltung für Gedächtniseffekt
+            from scipy.ndimage import gaussian_filter1d
+            b_ext_filtered = gaussian_filter1d(b_ext, sigma=correlation_time/self.config.dt, axis=0)
+            b_c13 += correlation_strength * b_ext_filtered
         
-        # C13 concentration-dependent minimum (only if C13 enabled)
-        if 'c13_bath' in active_magnetic_sources:
-            c13_source = self.sources['c13_bath']
-            concentration = getattr(c13_source, 'concentration', 0.011)
-            # Linear scaling with concentration (realistic)
-            c13_minimum = 1.0 * concentration / 0.011  # 1 Hz at natural abundance
-            limits.append(c13_minimum)
-            print(f"🔍 C13 minimum: {c13_minimum:.2f} Hz (conc={concentration:.4f})")
-        
-        final_rate = max(limits) if limits else 0.0
-        
-        print(f"🔍 Physical minimum dephasing: {final_rate:.2f} Hz")
-        return final_rate
+        return b_c13 + b_ext
     
     def calculate_dephasing_from_spectrum(self) -> float:
-        """Calculate dephasing with BRUTAL frequency limits"""
+        """Calculate dephasing with physically motivated frequency limits"""
         
-        # HARD LIMITS based on NV physics
-        f_min = 0.1      # 0.1 Hz minimum (DC cutoff)
-        f_max = 1e8      # 100 MHz maximum (way below GHz transitions)
+        # Physikalisch motivierte Grenzen
+        f_min = 1/(self._evolution_time_scale())  # Längste relevante Zeitskala
+        f_max = min(
+            SYSTEM.get_constant('nv_center', 'd_gs'),  # ZFS
+            1/self.config.dt  # Nyquist
+        )
         
-        # REALISTIC frequency array
-        frequencies = np.logspace(np.log10(f_min), np.log10(f_max), 1000)
+        # Logarithmisch mit mehr Punkten bei Resonanzen
+        base_freqs = np.logspace(np.log10(f_min), np.log10(f_max), 500)
+        
+        # Füge Resonanzfrequenzen hinzu
+        resonances = self._get_system_resonances()
+        frequencies = np.sort(np.concatenate([base_freqs, resonances]))
         
         print(f"🔍 Integration range: {f_min:.1e} to {f_max:.1e} Hz")
         
@@ -529,39 +555,55 @@ class NoiseGenerator:
         return gamma_phi
     
     def validate_psd_convergence(self, frequencies: np.ndarray, psd: np.ndarray) -> float:
-        """Validate that PSD integration converges"""
+        """Adaptive Integration mit Fehlerabschätzung"""
+        from scipy.integrate import quad
         
-        # Check convergence by testing different upper limits
-        test_limits = [1e6, 1e7, 1e8, 1e9]  # 1 MHz to 1 GHz
-        integrals = []
+        def psd_func(log_f):
+            f = np.exp(log_f)
+            return np.interp(f, frequencies, psd) * f  # Jacobian für log-Integration
         
-        for f_max in test_limits:
-            mask = frequencies <= f_max
-            if np.any(mask):
-                integral = np.trapz(psd[mask], frequencies[mask])
-                integrals.append(integral)
-            else:
-                integrals.append(0)
+        # Adaptive Quadratur
+        integral, error = quad(psd_func, np.log(frequencies[0]), np.log(frequencies[-1]),
+                              epsabs=1e-20, epsrel=1e-10, limit=1000)
         
-        print(f"🔍 PSD integration convergence test:")
-        for i, (f_max, integral) in enumerate(zip(test_limits, integrals)):
-            print(f"    {f_max:.0e} Hz: {integral:.2e} T²")
-            
-            if i > 0 and integrals[0] > 0:
-                ratio = integral / integrals[0]
-                print(f"    Ratio to 1 MHz: {ratio:.2f}")
+        print(f"🔍 Adaptive Integration: {integral:.2e} ± {error:.2e} T²")
         
-        # Check for convergence
-        if len(integrals) >= 2 and integrals[-2] > 0:
-            final_ratio = integrals[-1] / integrals[-2]
-            print(f"🔍 Final convergence ratio: {final_ratio:.2f}")
-            
-            if final_ratio > 3.0:  # More than 3x increase
-                raise ValueError(f"💀 PSD integral NOT converged: {final_ratio:.1f}x increase from {test_limits[-2]:.0e} to {test_limits[-1]:.0e} Hz")
-            elif final_ratio > 1.5:
-                warnings.warn(f"⚠️  PSD convergence marginal: {final_ratio:.1f}x increase")
+        if error/integral > 0.01:
+            print(f"⚠️ Integration Unsicherheit: {100*error/integral:.1f}%")
         
-        return integrals[-1] if integrals else 0.0  # Return integral up to highest frequency
+        return integral
+    
+    def _evolution_time_scale(self) -> float:
+        """Get characteristic evolution time scale"""
+        if hasattr(self.config, 'evolution_time'):
+            return self.config.evolution_time
+        else:
+            # Get from SystemCoordinator if available
+            if self.system is not None:
+                # Use characteristic time scale from system resonances
+                resonances = self.system.get_all_system_resonances()
+                if len(resonances) > 0:
+                    return 1.0 / np.min(resonances)  # 1/min_frequency
+            # NO DEFAULT FALLBACK - require explicit configuration
+            raise ValueError("Evolution time scale not configured - no fallbacks allowed")
+    
+    def _get_system_resonances(self) -> np.ndarray:
+        """Echte Resonanzen aus allen Modulen vom SystemCoordinator"""
+        if self.system is not None:
+            # Verwende echte systemweite Resonanzen
+            return self.system.get_all_system_resonances()
+        else:
+            # NO LEGACY SUPPORT - SystemCoordinator required
+            raise ValueError("SystemCoordinator required for system resonances - no fallbacks allowed")
+    
+    def _extract_magnetic_field_from_sources(self) -> Optional[np.ndarray]:
+        """Extrahiere echtes Magnetfeld aus SystemCoordinator"""
+        if self.system is not None:
+            # Use real magnetic field from SystemCoordinator
+            return self.system.get_actual_magnetic_field()
+        else:
+            # NO FALLBACKS - require SystemCoordinator
+            raise ValueError("SystemCoordinator required for magnetic field extraction - no fallbacks allowed")
         
     # Specialized noise functions
     

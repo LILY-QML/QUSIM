@@ -82,23 +82,41 @@ class MicrowaveDNPEngine:
         return condition_1 or condition_2 or condition_3 or condition_4
         
     def apply_dnp_sequence(self, dnp_params: Dict[str, Any]) -> Dict[str, float]:
-        """
-        Apply DNP sequence
+        """Realistische Solid-Effect DNP"""
+        mw_freq = dnp_params['mw_frequency']
+        mw_power = dnp_params['mw_power']
+        duration = dnp_params['duration']
+        B_field = dnp_params.get('B_field', 0.01)  # Default 0.01 T
+        T = dnp_params.get('temperature', 300)  # Default 300 K
         
-        Args:
-            dnp_params: DNP parameters
-            
-        Returns:
-            DNP results
-        """
-        # Placeholder implementation
-        results = {
-            'polarization_transfer': 0.1,  # 10% transfer efficiency
-            'transfer_time': dnp_params.get('duration', 1e-3),  # 1 ms
-            'efficiency': 0.1
+        # Get physical constants
+        gamma_e = SYSTEM.get_constant('nv_center', 'gamma_e')
+        gamma_n = SYSTEM.get_constant('nv_center', 'gamma_n_13c')
+        D = SYSTEM.get_constant('nv_center', 'd_gs')
+        kb = SYSTEM.get_constant('fundamental', 'kb')
+        hbar = SYSTEM.get_constant('fundamental', 'hbar')
+        
+        # Berechne Solid-Effect Übergangsraten
+        delta_se = mw_freq - (D + gamma_e * B_field)
+        
+        # Fermi's Golden Rule
+        transition_rate = (2*np.pi/hbar) * mw_power * np.sinc(delta_se * duration / (2*np.pi))**2
+        
+        # Polarisationstransfer mit Sättigung
+        initial_pol = dnp_params.get('initial_polarization', 0.0)
+        max_pol = np.tanh(gamma_e * B_field * hbar / (2*kb*T))
+        
+        transfer_efficiency = 1 - np.exp(-transition_rate * duration)
+        final_pol = initial_pol + (max_pol - initial_pol) * transfer_efficiency
+        
+        return {
+            'polarization_transfer': final_pol - initial_pol,
+            'transfer_time': duration,
+            'efficiency': transfer_efficiency,
+            'transition_rate': transition_rate,
+            'solid_effect_detuning': delta_se,
+            'maximum_polarization': max_pol
         }
-        
-        return results
         
     def compute_efficiency(self, mw_sequence: List[Dict]) -> float:
         """Compute DNP efficiency for MW sequence"""

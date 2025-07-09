@@ -1,0 +1,40 @@
+{
+  "system_parameters": {
+    "D_g_Hz": 2.87e9,
+    "D_e_Hz": 1.42e9,
+    "gamma_e_Hz_per_G": 2.8e6,
+    "B_vec_G": [0.0, 0.0, 500.0],
+    "N14_hyperfine": {
+      "A_para_Hz": 2.16e6,
+      "A_perp_Hz": 0.0
+    },
+    "C13_cluster": {
+      "N_C": 3,
+      "A_para_Hz": [3.0e6, 2.1e6, 1.6e6],
+      "A_perp_Hz": [0.2e6, 0.15e6, 0.1e6]
+    },
+    "relaxation": {
+      "T1_s": 5e-3,
+      "Tphi_s": 6e-6
+    },
+    "optical": {
+      "Tau_rad_s": 12e-9,
+      "Tau_MS_s": 200e-7,
+      "k_ISC_ms0_factor": 0.05,
+      "k_ISC_ms1_factor": 0.3
+    },
+    "microwave": {
+      "Omega_Rabi_Hz": 5.0e6,
+      "Delta_Hz": 0.0
+    },
+    "readout": {
+      "Beta_max_Hz": 13e6,
+      "W_ms0_late": 1.0,
+      "W_ms1_late": 0.7
+    }
+  },
+  "simulation_parameters": {
+    "DT_ns": 2.0,
+    "seed": 42
+  }
+}

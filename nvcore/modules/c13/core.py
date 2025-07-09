@@ -46,24 +46,37 @@ class C13BathEngine:
     NO MOCKS, NO FALLBACKS - pure quantum mechanics
     """
     
-    def __init__(self, config: C13Configuration, nv_position: np.ndarray = None):
+    def __init__(self, config: C13Configuration, system_coordinator):
         """
         Initialize C13 bath engine
         
         Args:
             config: C13 configuration object
-            nv_position: NV center position [m]
+            system_coordinator: SystemCoordinator REQUIRED for hyperrealistic parameters
         """
+        if system_coordinator is None:
+            raise ValueError("SystemCoordinator REQUIRED for C13 engine - no fallbacks allowed")
+        
         self.config = config
-        self.nv_position = nv_position if nv_position is not None else np.zeros(3)
+        self.system = system_coordinator
+        
+        # NV position from SystemCoordinator - no fallbacks
+        self.nv_position = self.system.get_nv_position()
         
         # Generate C13 positions
         self.c13_positions = self._generate_c13_positions()
         self.n_c13 = len(self.c13_positions)
         
+        # Registriere C13-Positionen beim System
+        if self.system is not None:
+            self.system.register_c13_positions(self.c13_positions)
+            self.system.register_module('c13', self)
+        
         print(f"🧲 Initialized C13 bath with {self.n_c13} nuclei")
         print(f"📍 Distribution: {config.distribution}")
         print(f"🎯 Interaction mode: {config.interaction_mode.value}")
+        if self.system is not None:
+            print(f"🌟 Connected to SystemCoordinator for HYPERREALISTIC parameters")
         
         # Initialize quantum operators
         self.quantum_ops = C13QuantumOperators(
@@ -227,13 +240,89 @@ class C13BathEngine:
         if self.nuclear_zeeman:
             H += self.nuclear_zeeman.get_zeeman_hamiltonian(self.quantum_ops.c13_operators)
             
-        # Add small random field to break degeneracies
-        random_field = 1e3  # 1 kHz
+        # Echter Symmetriebrechung vom System - KEINE hardcoded Werte
+        if self.system is None:
+            raise ValueError("SystemCoordinator required for symmetry breaking field")
+        
+        # Physikalisch motivierte Symmetriebrechung aus Kristalldefekten
+        base_field = self.system.get_symmetry_breaking_field(self.c13_positions)
+        
         for i in range(self.n_c13):
-            random_amplitude = random_field * (2*np.random.random() - 1)
-            H += random_amplitude * self.quantum_ops.c13_operators[i]['Iz']
+            # Physikalisch motivierte Variation basierend auf lokaler Umgebung
+            local_environment = self._calculate_local_environment(i)
+            field_variation = base_field * local_environment
+            H += field_variation * self.quantum_ops.c13_operators[i]['Iz']
             
+        # Add C13-C13 dipolar interactions
+        H = self._add_c13_c13_interactions(H)
+        
         return H
+    
+    def _add_c13_c13_interactions(self, H: np.ndarray) -> np.ndarray:
+        """Vollständige C13-C13 Dipol-Dipol Kopplung mit allen Termen"""
+        mu_0 = 4*np.pi*1e-7
+        gamma_c = SYSTEM.get_constant('nv_center', 'gamma_n_13c')
+        hbar = SYSTEM.get_constant('fundamental', 'hbar')
+        
+        for i in range(self.n_c13):
+            for j in range(i+1, self.n_c13):
+                r_ij = self.c13_positions[i] - self.c13_positions[j]
+                r = np.linalg.norm(r_ij)
+                
+                # Skip if nuclei are too close (unphysical)
+                if r < 1e-10:
+                    continue
+                    
+                r_hat = r_ij / r
+                
+                # Dipol-Dipol Kopplungsstärke
+                coupling = (mu_0 * gamma_c**2 * hbar) / (4*np.pi * r**3)
+                
+                # Operatoren
+                Ix_i, Iy_i, Iz_i = (self.quantum_ops.c13_operators[i]['Ix'],
+                                   self.quantum_ops.c13_operators[i]['Iy'],
+                                   self.quantum_ops.c13_operators[i]['Iz'])
+                Ix_j, Iy_j, Iz_j = (self.quantum_ops.c13_operators[j]['Ix'],
+                                   self.quantum_ops.c13_operators[j]['Iy'],
+                                   self.quantum_ops.c13_operators[j]['Iz'])
+                
+                # Vollständiger Dipol-Dipol Hamiltonian
+                # H_DD = (μ₀γ²ℏ/4πr³) [IᵢIⱼ - 3(Iᵢ·r̂)(Iⱼ·r̂)]
+                
+                # Skalarprodukt Iᵢ·Iⱼ
+                I_dot_I = Ix_i @ Ix_j + Iy_i @ Iy_j + Iz_i @ Iz_j
+                
+                # (Iᵢ·r̂)(Iⱼ·r̂)
+                I_r_I_r = (Ix_i*r_hat[0] + Iy_i*r_hat[1] + Iz_i*r_hat[2]) @ \
+                          (Ix_j*r_hat[0] + Iy_j*r_hat[1] + Iz_j*r_hat[2])
+                
+                # Vollständiger Dipolar-Term
+                H += coupling * (I_dot_I - 3*I_r_I_r)
+                
+        return H
+    
+    def _calculate_local_environment(self, nucleus_index: int) -> float:
+        """Berechne lokale Umgebung aus Nachbarn"""
+        if nucleus_index >= len(self.c13_positions):
+            return 1.0
+            
+        pos = self.c13_positions[nucleus_index]
+        
+        # Distanz zu nächsten Nachbarn
+        distances = []
+        for j, other_pos in enumerate(self.c13_positions):
+            if j != nucleus_index:
+                distances.append(np.linalg.norm(pos - other_pos))
+        
+        if len(distances) == 0:
+            return 1.0
+        
+        # Lokale Dichte beeinflusst Symmetriebrechung
+        nearest_neighbor = min(distances)
+        diamond_lattice = 3.567e-10  # meters
+        density_factor = (diamond_lattice / nearest_neighbor)**3  # Relative zur Gitterkonstante
+        
+        return np.tanh(density_factor)  # Sättigung bei hoher Dichte
         
     def get_total_hamiltonian(self, t: float = 0.0, nv_state: Optional[np.ndarray] = None,
                             B_field: Optional[np.ndarray] = None, **params) -> np.ndarray:

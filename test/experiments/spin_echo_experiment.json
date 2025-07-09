@@ -1,0 +1,65 @@
+{
+  "experiment": {
+    "name": "Spin Echo Sequence",
+    "description": "π/2 - τ - π - τ - π/2 sequence for coherence measurement",
+    "total_time_ns": 6000,
+    "target_state": {
+      "electron": [0, 1, 0],
+      "nitrogen": [0, 1, 0],
+      "carbons": [[1, 0], [1, 0], [1, 0]]
+    },
+    "sequence": [
+      {
+        "type": "mw_pulse",
+        "start_ns": 0,
+        "duration_ns": 200,
+        "omega_rabi_Hz": 6.25e6,
+        "phase_rad": 0,
+        "delta_Hz": 0,
+        "shape": "gaussian"
+      },
+      {
+        "type": "mw_pulse",
+        "start_ns": 1000,
+        "duration_ns": 400,
+        "omega_rabi_Hz": 6.25e6,
+        "phase_rad": 0,
+        "delta_Hz": 0,
+        "shape": "gaussian"
+      },
+      {
+        "type": "mw_pulse",
+        "start_ns": 2000,
+        "duration_ns": 200,
+        "omega_rabi_Hz": 6.25e6,
+        "phase_rad": 1.5708,
+        "delta_Hz": 0,
+        "shape": "gaussian"
+      },
+      {
+        "type": "laser_readout",
+        "start_ns": 3000,
+        "duration_ns": 3000,
+        "power": 1.0
+      },
+      {
+        "type": "photon_counter",
+        "start_ns": 3000,
+        "duration_ns": 3000,
+        "bin_width_ns": 4,
+        "shots": 5000
+      }
+    ],
+    "outputs": [
+      {
+        "type": "population_plot",
+        "filename": "spin_echo_populations.png"
+      },
+      {
+        "type": "photon_trace",
+        "filename": "spin_echo_photons.png"
+      }
+    ]
+  },
+  "output_dir": "results"
+}

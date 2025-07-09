@@ -36,7 +36,7 @@ class KnightShiftEngine:
     def get_knight_shift_hamiltonian(self, c13_operators: Dict[int, Dict[str, np.ndarray]],
                                    nv_state: np.ndarray) -> np.ndarray:
         """
-        Get Knight shift Hamiltonian
+        Get Knight shift Hamiltonian with full 3D components
         
         Args:
             c13_operators: C13 spin operators
@@ -49,24 +49,43 @@ class KnightShiftEngine:
         if n_c13 == 0:
             return np.array([[0.0]])
             
-        # Extract NV spin expectation values
-        if nv_state.ndim == 1:
-            # State vector - need to compute ⟨S⟩
-            Sz_expectation = np.real(np.conj(nv_state) @ np.diag([-1, 0, 1]) @ nv_state)
-        else:
-            # Density matrix
-            Sz_expectation = np.real(np.trace(np.diag([-1, 0, 1]) @ nv_state))
-            
-        # Knight shift field
-        B_knight = self.chi_parallel * Sz_expectation  # Simplified: only z-component
+        # Volle 3D Knight Shift
+        S_expectation = self._calculate_full_spin_expectation(nv_state)
         
-        # Construct Hamiltonian
-        dim = 2**n_c13
-        H_knight = np.zeros((dim, dim), dtype=complex)
+        H_knight = np.zeros((2**n_c13, 2**n_c13), dtype=complex)
         
         for i in range(n_c13):
-            # Additional Zeeman interaction
-            knight_freq = -self.gamma_n * B_knight
-            H_knight += knight_freq * c13_operators[i]['Iz']
+            # Anisotrope Knight Shift
+            B_knight = np.array([
+                self.chi_perpendicular * S_expectation[0],
+                self.chi_perpendicular * S_expectation[1],
+                self.chi_parallel * S_expectation[2]
+            ])
             
+            # Volle Vektor-Kopplung
+            for k, B_k in enumerate(B_knight):
+                op_name = ['Ix', 'Iy', 'Iz'][k]
+                H_knight -= self.gamma_n * B_k * c13_operators[i][op_name]
+        
         return H_knight * 2 * np.pi
+    
+    def _calculate_full_spin_expectation(self, nv_state: np.ndarray) -> np.ndarray:
+        """Calculate full 3D spin expectation value"""
+        
+        # NV spin operators (S=1)
+        Sx = (1/np.sqrt(2)) * np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=complex)
+        Sy = (1/np.sqrt(2)) * np.array([[0, -1j, 0], [1j, 0, -1j], [0, 1j, 0]], dtype=complex)
+        Sz = np.array([[1, 0, 0], [0, 0, 0], [0, 0, -1]], dtype=complex)
+        
+        if nv_state.ndim == 1:
+            # State vector
+            Sx_expectation = np.real(np.conj(nv_state) @ Sx @ nv_state)
+            Sy_expectation = np.real(np.conj(nv_state) @ Sy @ nv_state)
+            Sz_expectation = np.real(np.conj(nv_state) @ Sz @ nv_state)
+        else:
+            # Density matrix
+            Sx_expectation = np.real(np.trace(Sx @ nv_state))
+            Sy_expectation = np.real(np.trace(Sy @ nv_state))
+            Sz_expectation = np.real(np.trace(Sz @ nv_state))
+        
+        return np.array([Sx_expectation, Sy_expectation, Sz_expectation])
