@@ -2,7 +2,7 @@
   "experiment": {
     "name": "EPRB Circuit - Fig. 6 (NV-14N DD Implementation)",
     "description": "Complete EPRB circuit using MW pulses and dynamical decoupling for nuclear spin control",
-    "total_time_ns": 25000,
+    "total_time_ns": 35000,
     "target_state": {
       "electron": [0.7071, 0, 0.7071],
       "nitrogen": [0.7071, 0, 0.7071],
@@ -34,65 +34,22 @@
         "type": "mw_pulse",
         "start_ns": 100,
         "duration_ns": 4200,
-        "pulse_array": {
-          "omega_Hz": [
-            5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6
-          ],
-          "phase_rad": [
-            0, 0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0
-          ],
-          "delta_Hz": [
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-          ]
-        }
+        "omega_rabi_Hz": 5.0e6,
+        "phase_rad": 0,
+        "delta_Hz": 0,
+        "shape": "square",
+        "dd_type": "XY8_nuclear_pi_half"
       },
       {
         "comment": "Step 4: CNOT gate (e→N) via DD - XY8 sequence (Np=80, conditional π)",
         "type": "mw_pulse",
         "start_ns": 4400,
         "duration_ns": 8700,
-        "pulse_array": {
-          "omega_Hz": [
-            5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6
-          ],
-          "phase_rad": [
-            0, 0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0
-          ]
-        }
+        "omega_rabi_Hz": 5.0e6,
+        "phase_rad": 0,
+        "delta_Hz": 0,
+        "shape": "square",
+        "dd_type": "XY8_nuclear_pi"
       },
       {
         "comment": "Step 5: H gate on electron - MW π/2-pulse around Y + frame shift",
@@ -109,47 +66,30 @@
         "type": "mw_pulse",
         "start_ns": 13300,
         "duration_ns": 4200,
-        "pulse_array": {
-          "omega_Hz": [
-            5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6
-          ],
-          "phase_rad": [
-            0, 0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0
-          ]
-        }
+        "omega_rabi_Hz": 5.0e6,
+        "phase_rad": 0,
+        "delta_Hz": 0,
+        "shape": "square",
+        "dd_type": "XY8_nuclear_pi_half"
       },
       {
         "comment": "Step 7: Rz(α) on electron - Virtual Z rotation via phase shift",
-        "type": "mw_pulse",
+        "type": "phase_shift",
         "start_ns": 17600,
-        "duration_ns": 10,
-        "omega_rabi_Hz": 0,
-        "phase_rad": 0.7854,
-        "delta_Hz": 0,
-        "shape": "square"
+        "phase_shift_rad": 0.7854,
+        "target": "electron"
       },
       {
         "comment": "Step 8: Rz(β) on 14N - Virtual Z via DD phase shift",
-        "type": "mw_pulse",
+        "type": "phase_shift",
         "start_ns": 17700,
-        "duration_ns": 500,
-        "pulse_array": {
-          "omega_Hz": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "phase_rad": [1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708]
-        }
+        "phase_shift_rad": 1.5708,
+        "target": "nitrogen"
       },
       {
         "comment": "Step 9a: Final H gate on electron",
         "type": "mw_pulse",
-        "start_ns": 18300,
+        "start_ns": 18000,
         "duration_ns": 17.5,
         "omega_rabi_Hz": 14.3e6,
         "phase_rad": 1.5708,
@@ -159,49 +99,68 @@
       {
         "comment": "Step 9b: Final H gate on 14N via DD",
         "type": "mw_pulse",
-        "start_ns": 18400,
+        "start_ns": 18100,
         "duration_ns": 4200,
-        "pulse_array": {
-          "omega_Hz": [
-            5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6,
-            0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6, 0, 5.0e6
-          ],
-          "phase_rad": [
-            0, 0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0,
-            0, 1.5708, 0, 0, 0, 1.5708, 0, 1.5708, 0, 0, 0, 1.5708, 0, 0
-          ]
-        }
+        "omega_rabi_Hz": 5.0e6,
+        "phase_rad": 0,
+        "delta_Hz": 0,
+        "shape": "square",
+        "dd_type": "XY8_nuclear_pi_half"
       },
       {
-        "comment": "Step 10: Laser readout for both electron and nuclear spin measurement",
+        "comment": "Step 10a: First measurement - Electron readout",
         "type": "laser_readout",
         "start_ns": 23000,
         "duration_ns": 2000,
-        "power": 1.0
+        "power": 1.0,
+        "target": "electron"
       },
       {
-        "comment": "Step 10: Photon counting in early gate (0-150 ns)",
+        "comment": "Step 10a: Photon counting for electron measurement",
         "type": "photon_counter",
         "start_ns": 23000,
         "duration_ns": 2000,
         "bin_width_ns": 3,
-        "shots": 15000
+        "shots": 15000,
+        "target": "electron"
+      },
+      {
+        "comment": "Step 10b: Nuclear mapping - Hyperfine-selective MW π-pulse",
+        "type": "mw_pulse",
+        "start_ns": 25500,
+        "duration_ns": 100,
+        "omega_rabi_Hz": 5.0e6,
+        "phase_rad": 0,
+        "delta_Hz": 2.16e6,
+        "shape": "gaussian",
+        "mapping": "nuclear_to_electron"
+      },
+      {
+        "comment": "Step 10c: Second measurement - Nuclear state readout via electron",
+        "type": "laser_readout",
+        "start_ns": 26000,
+        "duration_ns": 2000,
+        "power": 1.0,
+        "target": "nuclear_via_electron"
+      },
+      {
+        "comment": "Step 10c: Photon counting for nuclear measurement",
+        "type": "photon_counter",
+        "start_ns": 26000,
+        "duration_ns": 2000,
+        "bin_width_ns": 3,
+        "shots": 15000,
+        "target": "nuclear_via_electron"
       }
     ],
     "outputs": [
       {
-        "type": "population_plot",
-        "filename": "eprb_circuit_populations.png"
+        "type": "photon_trace",
+        "filename": "eprb_circuit_electron_photons.png"
       },
       {
-        "type": "photon_trace",
-        "filename": "eprb_circuit_photons.png"
+        "type": "photon_trace", 
+        "filename": "eprb_circuit_nuclear_photons.png"
       }
     ]
   },

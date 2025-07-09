@@ -239,16 +239,10 @@ class NVSimulator:
             'fidelity': None
         }
         
-        # Find all MW pulses and photon counter in sequence
+        # Find all MW pulses and photon counters in sequence
         mw_pulses = [e for e in sequence if e['type'] == 'mw_pulse']
-        photon_counter = None
-        laser_readout = None
-        
-        for element in sequence:
-            if element['type'] == 'photon_counter':
-                photon_counter = element
-            elif element['type'] == 'laser_readout':
-                laser_readout = element
+        photon_counters = [e for e in sequence if e['type'] == 'photon_counter']
+        laser_readouts = [e for e in sequence if e['type'] == 'laser_readout']
                 
         # Setup target state if specified
         psi_target = None
@@ -284,42 +278,50 @@ class NVSimulator:
             fidelity = float(jnp.real(jnp.trace(rho_target @ rho)))
             results['fidelity'] = fidelity
             
-        # Generate photon counts if counter is defined
-        if photon_counter and laser_readout:
-            counter_start = photon_counter['start_ns']
-            counter_duration = photon_counter['duration_ns']
-            bin_width = photon_counter['bin_width_ns']
-            shots = photon_counter.get('shots', 1000)
-            
-            # Time bins for photon counting
-            count_times = jnp.arange(counter_start, counter_start + counter_duration, bin_width) * 1e-9
-            counts = []
-            
-            for t in count_times:
-                # Find population at this time
-                idx = int(t / self.DT_ns * 1e9)
-                if idx < len(results['population_ms0']):
-                    p0 = results['population_ms0'][idx]
-                else:
-                    p0 = results['population_ms0'][-1]
+        # Generate photon counts for all counters
+        all_photon_counts = []
+        
+        for i, photon_counter in enumerate(photon_counters):
+            if i < len(laser_readouts):  # Make sure we have corresponding laser readout
+                counter_start = photon_counter['start_ns']
+                counter_duration = photon_counter['duration_ns']
+                bin_width = photon_counter['bin_width_ns']
+                shots = photon_counter.get('shots', 1000)
+                
+                # Time bins for photon counting
+                count_times = jnp.arange(counter_start, counter_start + counter_duration, bin_width) * 1e-9
+                counts = []
+                
+                for t in count_times:
+                    # Find population at this time
+                    idx = int(t / self.DT_ns * 1e9)
+                    if idx < len(results['population_ms0']):
+                        p0 = results['population_ms0'][idx]
+                    else:
+                        p0 = results['population_ms0'][-1]
+                        
+                    # Photon count model
+                    t_rel = t - counter_start * 1e-9
+                    pump = 1 - jnp.exp(-t_rel / 20e-9)
+                    W1t = self.W_ms1_late + (1 - self.W_ms1_late) * jnp.exp(-t_rel / 100e-9)
+                    rate = self.Beta_max_Hz * pump * (p0 * self.W_ms0_late + (1 - p0) * W1t)
                     
-                # Photon count model
-                t_rel = t - counter_start * 1e-9
-                pump = 1 - jnp.exp(-t_rel / 20e-9)
-                W1t = self.W_ms1_late + (1 - self.W_ms1_late) * jnp.exp(-t_rel / 100e-9)
-                rate = self.Beta_max_Hz * pump * (p0 * self.W_ms0_late + (1 - p0) * W1t)
-                
-                # Generate Poisson counts
-                self.key_master, sub = jax.random.split(self.key_master)
-                count = jax.random.poisson(sub, rate * bin_width * 1e-9 * shots)
-                counts.append(float(count))
-                
-            results['photon_counts'] = {
-                'times_ns': count_times * 1e9,
-                'counts': np.array(counts),
-                'bin_width_ns': bin_width,
-                'shots': shots
-            }
+                    # Generate Poisson counts
+                    self.key_master, sub = jax.random.split(self.key_master)
+                    count = jax.random.poisson(sub, rate * bin_width * 1e-9 * shots)
+                    counts.append(float(count))
+                    
+                photon_data = {
+                    'times_ns': count_times * 1e9,
+                    'counts': np.array(counts),
+                    'bin_width_ns': bin_width,
+                    'shots': shots,
+                    'measurement_id': i
+                }
+                all_photon_counts.append(photon_data)
+        
+        # Store all photon counts
+        results['photon_counts'] = all_photon_counts[0] if len(all_photon_counts) == 1 else all_photon_counts
             
         return results
         
@@ -330,12 +332,20 @@ class NVSimulator:
             
         outputs = experiment.get('outputs', [])
         
-        for output in outputs:
+        for i, output in enumerate(outputs):
             if output['type'] == 'population_plot':
                 self.plot_population(results, experiment, save_path=os.path.join(save_dir, output['filename']) if save_dir else None)
             elif output['type'] == 'photon_trace':
                 if results['photon_counts']:
-                    self.plot_photon_trace(results, save_path=os.path.join(save_dir, output['filename']) if save_dir else None)
+                    # Handle multiple photon counts
+                    if isinstance(results['photon_counts'], list):
+                        # Use measurement_id to match the correct photon data
+                        if i < len(results['photon_counts']):
+                            photon_data = results['photon_counts'][i]
+                            self.plot_photon_trace_data(photon_data, save_path=os.path.join(save_dir, output['filename']) if save_dir else None)
+                    else:
+                        # Single photon count
+                        self.plot_photon_trace(results, save_path=os.path.join(save_dir, output['filename']) if save_dir else None)
                     
     def plot_population(self, results: Dict[str, Any], experiment: Dict[str, Any], save_path: str = None):
         """Plot population dynamics"""
@@ -392,7 +402,10 @@ class NVSimulator:
     def plot_photon_trace(self, results: Dict[str, Any], save_path: str = None):
         """Plot photon count trace with higher resolution"""
         photon_data = results['photon_counts']
+        self.plot_photon_trace_data(photon_data, save_path)
         
+    def plot_photon_trace_data(self, photon_data: Dict[str, Any], save_path: str = None):
+        """Plot photon count trace data"""
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
         
         # Plot with smaller bins for better resolution
@@ -409,7 +422,13 @@ class NVSimulator:
         
         ax.set_xlabel('Time (ns)')
         ax.set_ylabel('Photon Counts')
-        ax.set_title(f"Photon Trace (bin width: {photon_data['bin_width_ns']} ns, shots: {photon_data['shots']})")
+        
+        # Add measurement ID to title if available
+        title = f"Photon Trace (bin width: {photon_data['bin_width_ns']} ns, shots: {photon_data['shots']})"
+        if 'measurement_id' in photon_data:
+            title += f" - Measurement {photon_data['measurement_id'] + 1}"
+        ax.set_title(title)
+        
         ax.legend()
         ax.grid(True, alpha=0.3)
         
