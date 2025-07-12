@@ -35,6 +35,6 @@
   },
   "simulation_parameters": {
     "DT_ns": 2.0,
-    "seed": 42
+    "seed": 123
   }
 }
