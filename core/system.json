@@ -28,7 +28,7 @@
       "Delta_Hz": 0.0
     },
     "readout": {
-      "Beta_max_Hz": 13e6,
+      "Beta_max_Hz": 25e6,
       "W_ms0_late": 1.0,
       "W_ms1_late": 0.7
     }

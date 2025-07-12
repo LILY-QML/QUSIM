@@ -306,9 +306,10 @@ class NVSimulator:
                     W1t = self.W_ms1_late + (1 - self.W_ms1_late) * jnp.exp(-t_rel / 100e-9)
                     rate = self.Beta_max_Hz * pump * (p0 * self.W_ms0_late + (1 - p0) * W1t)
                     
-                    # Generate Poisson counts
+                    # Generate Poisson counts - fix the rate calculation
+                    lambda_counts = rate * bin_width * 1e-9 * shots
                     self.key_master, sub = jax.random.split(self.key_master)
-                    count = jax.random.poisson(sub, rate * bin_width * 1e-9 * shots)
+                    count = jax.random.poisson(sub, lambda_counts)
                     counts.append(float(count))
                     
                 photon_data = {
@@ -322,6 +323,9 @@ class NVSimulator:
         
         # Store all photon counts
         results['photon_counts'] = all_photon_counts[0] if len(all_photon_counts) == 1 else all_photon_counts
+        
+        # Export photon count data to files  
+        self.export_photon_data(all_photon_counts, experiment, save_dir='results')
             
         return results
         
@@ -437,6 +441,89 @@ class NVSimulator:
             plt.close()
         else:
             plt.show()
+            
+    def export_photon_data(self, all_photon_counts: List[Dict[str, Any]], experiment: Dict[str, Any], save_dir: str = 'results'):
+        """Export photon count data to data files"""
+        import datetime
+        
+        # Create data directory
+        data_dir = save_dir
+        os.makedirs(data_dir, exist_ok=True)
+        
+        # Generate timestamp for unique filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        experiment_name = experiment.get('name', 'experiment').replace(' ', '_')
+        
+        for i, photon_data in enumerate(all_photon_counts):
+            # Create filename
+            filename = f"{experiment_name}_measurement_{i+1}_{timestamp}.dat"
+            filepath = os.path.join(data_dir, filename)
+            
+            # Prepare header information
+            header_lines = []
+            header_lines.append(f"# NV-CENTER PHOTON COUNT DATA")
+            header_lines.append(f"# Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            header_lines.append(f"# Experiment: {experiment.get('name', 'Unknown')}")
+            header_lines.append(f"# Description: {experiment.get('description', 'No description')}")
+            header_lines.append(f"# Measurement ID: {i+1}")
+            header_lines.append(f"# Total time: {experiment.get('total_time_ns', 'Unknown')} ns")
+            header_lines.append(f"#")
+            header_lines.append(f"# MEASUREMENT PARAMETERS:")
+            header_lines.append(f"# - Bin width: {photon_data['bin_width_ns']} ns")
+            header_lines.append(f"# - Total shots: {photon_data['shots']}")
+            header_lines.append(f"# - Start time: {photon_data['times_ns'][0]:.0f} ns")
+            header_lines.append(f"# - End time: {photon_data['times_ns'][-1]:.0f} ns")
+            header_lines.append(f"# - Total bins: {len(photon_data['counts'])}")
+            header_lines.append(f"# - Mean counts: {np.mean(photon_data['counts']):.2f}")
+            header_lines.append(f"# - Std counts: {np.std(photon_data['counts']):.2f}")
+            header_lines.append(f"# - Min counts: {np.min(photon_data['counts']):.0f}")
+            header_lines.append(f"# - Max counts: {np.max(photon_data['counts']):.0f}")
+            header_lines.append(f"#")
+            header_lines.append(f"# SYSTEM PARAMETERS:")
+            header_lines.append(f"# - Magnetic field: {self.B_vec_G.tolist()} G")
+            header_lines.append(f"# - C13 nuclei: {self.N_C}")
+            header_lines.append(f"# - T1: {self.T1_s:.2e} s")
+            header_lines.append(f"# - Tphi: {self.Tphi_s:.2e} s")
+            header_lines.append(f"# - Beta_max: {self.Beta_max_Hz:.2e} Hz")
+            header_lines.append(f"# - Random seed: {self.config['simulation_parameters'].get('seed', 'Unknown')}")
+            header_lines.append(f"#")
+            header_lines.append(f"# PULSE SEQUENCE:")
+            
+            # Add pulse sequence information
+            mw_pulses = [e for e in experiment['sequence'] if e['type'] == 'mw_pulse']
+            for j, pulse in enumerate(mw_pulses):
+                header_lines.append(f"# - Pulse {j+1}: {pulse['start_ns']}-{pulse['start_ns'] + pulse['duration_ns']} ns, "
+                                  f"Ω={pulse.get('omega_rabi_Hz', 0)/1e6:.1f} MHz, "
+                                  f"φ={pulse.get('phase_rad', 0):.3f} rad, "
+                                  f"Δ={pulse.get('delta_Hz', 0)/1e6:.1f} MHz")
+            
+            header_lines.append(f"#")
+            header_lines.append(f"# DATA FORMAT:")
+            header_lines.append(f"# Each line contains all photon counts from one counter")
+            header_lines.append(f"# Time(ns) -> Bin_center = bin_index * {photon_data['bin_width_ns']} + {photon_data['times_ns'][0]:.0f}")
+            header_lines.append(f"# Counts -> Poisson-distributed photon counts per bin")
+            header_lines.append(f"#")
+            header_lines.append(f"# MEASUREMENT_ID  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT...")
+            
+            # Write data file
+            with open(filepath, 'w') as f:
+                # Write header
+                for line in header_lines:
+                    f.write(line + '\n')
+                
+                # Write all counts from this counter in one line
+                counts = photon_data['counts']
+                
+                # Format: measurement_id followed by all counts
+                line_data = [f"{photon_data['measurement_id']:8d}"]
+                for count in counts:
+                    line_data.append(f"{count:6.0f}")
+                
+                f.write("  ".join(line_data) + '\n')
+                
+            print(f"📊 Exported photon data: {filepath}")
+            print(f"   📈 {len(counts)} bins, {photon_data['shots']} shots per bin")
+            print(f"   📊 Mean: {np.mean(counts):.1f} ± {np.std(counts):.1f} counts")
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
