@@ -10,9 +10,12 @@ import os
 import jax
 import jax.numpy as jnp
 import numpy as np
-import matplotlib.pyplot as plt
 from jax.scipy.linalg import expm
 from typing import Dict, List, Tuple, Any, Optional
+
+# Import our modular components
+from modules.photon_detection import PhotonDetector
+from modules.noise_model import NoiseModel
 
 # Physical constants
 PI = jnp.pi
@@ -26,6 +29,7 @@ class NVSimulator:
         self.setup_parameters()
         self.setup_operators()
         self.setup_initial_state()
+        self.setup_modules()
         
     def setup_parameters(self):
         """Extract and set all simulation parameters from config"""
@@ -146,16 +150,26 @@ class NVSimulator:
         psi_target = jnp.kron(jnp.kron(ket_e, ket_N), ket_C)
         return psi_target
         
+    def setup_modules(self):
+        """Setup noise and photon detection modules"""
+        # Setup noise model
+        relaxation_params = self.config['system_parameters']['relaxation']
+        self.noise_model = NoiseModel(relaxation_params, self.DIM)
+        
+        # Setup photon detector
+        optical_params = self.config['system_parameters']['optical']
+        readout_params = self.config['system_parameters']['readout']
+        self.photon_detector = PhotonDetector(optical_params, readout_params)
+        
     def dissipator(self, rho):
-        """Apply dissipator for relaxation and dephasing"""
-        out = 0j
-        Ls = [
-            jnp.sqrt(1/self.Tphi_s)*(self.Sz - jnp.trace(self.Sz)/self.DIM),
-            jnp.sqrt(1/self.Tau_rad_s)*(self.Pg@self.Pg)
-        ]
-        for L in Ls:
-            out += L@rho@L.conj().T - 0.5*(L.conj().T@L@rho + rho@L.conj().T@L)
-        return out
+        """Apply dissipator for relaxation and dephasing using noise module"""
+        operators = {
+            'Sz': self.Sz,
+            'Pg': self.Pg,
+            'Sx': self.Sx,
+            'Sy': self.Sy
+        }
+        return self.noise_model.basic_dissipator(rho, operators)
         
     def mw_envelope(self, t, start, duration, omega_max, shape='cos'):
         """Microwave pulse envelope function"""
@@ -283,42 +297,24 @@ class NVSimulator:
         
         for i, photon_counter in enumerate(photon_counters):
             if i < len(laser_readouts):  # Make sure we have corresponding laser readout
-                counter_start = photon_counter['start_ns']
-                counter_duration = photon_counter['duration_ns']
-                bin_width = photon_counter['bin_width_ns']
-                shots = photon_counter.get('shots', 1000)
-                
-                # Time bins for photon counting
-                count_times = jnp.arange(counter_start, counter_start + counter_duration, bin_width) * 1e-9
-                counts = []
-                
-                for t in count_times:
-                    # Find population at this time
-                    idx = int(t / self.DT_ns * 1e9)
-                    if idx < len(results['population_ms0']):
-                        p0 = results['population_ms0'][idx]
-                    else:
-                        p0 = results['population_ms0'][-1]
-                        
-                    # Photon count model
-                    t_rel = t - counter_start * 1e-9
-                    pump = 1 - jnp.exp(-t_rel / 20e-9)
-                    W1t = self.W_ms1_late + (1 - self.W_ms1_late) * jnp.exp(-t_rel / 100e-9)
-                    rate = self.Beta_max_Hz * pump * (p0 * self.W_ms0_late + (1 - p0) * W1t)
-                    
-                    # Generate Poisson counts - fix the rate calculation
-                    lambda_counts = rate * bin_width * 1e-9 * shots
-                    self.key_master, sub = jax.random.split(self.key_master)
-                    count = jax.random.poisson(sub, lambda_counts)
-                    counts.append(float(count))
-                    
-                photon_data = {
-                    'times_ns': count_times * 1e9,
-                    'counts': np.array(counts),
-                    'bin_width_ns': bin_width,
-                    'shots': shots,
-                    'measurement_id': i
+                # Use photon detector module
+                populations = {
+                    'times_ns': results['times_ns'],
+                    'ms0': results['population_ms0']
                 }
+                
+                photon_data = self.photon_detector.generate_counts(
+                    populations,
+                    photon_counter,
+                    self.DT_ns * 1e-9,
+                    self.key_master
+                )
+                
+                # Update RNG key
+                self.key_master, _ = jax.random.split(self.key_master)
+                
+                # Add measurement ID
+                photon_data['measurement_id'] = i
                 all_photon_counts.append(photon_data)
         
         # Store all photon counts
@@ -328,119 +324,6 @@ class NVSimulator:
         self.export_photon_data(all_photon_counts, experiment, save_dir='results')
             
         return results
-        
-    def plot_results(self, results: Dict[str, Any], experiment: Dict[str, Any], save_dir: str = None):
-        """Plot experiment results"""
-        if save_dir:
-            os.makedirs(save_dir, exist_ok=True)
-            
-        outputs = experiment.get('outputs', [])
-        
-        for i, output in enumerate(outputs):
-            if output['type'] == 'population_plot':
-                self.plot_population(results, experiment, save_path=os.path.join(save_dir, output['filename']) if save_dir else None)
-            elif output['type'] == 'photon_trace':
-                if results['photon_counts']:
-                    # Handle multiple photon counts
-                    if isinstance(results['photon_counts'], list):
-                        # Use measurement_id to match the correct photon data
-                        if i < len(results['photon_counts']):
-                            photon_data = results['photon_counts'][i]
-                            self.plot_photon_trace_data(photon_data, save_path=os.path.join(save_dir, output['filename']) if save_dir else None)
-                    else:
-                        # Single photon count
-                        self.plot_photon_trace(results, save_path=os.path.join(save_dir, output['filename']) if save_dir else None)
-                    
-    def plot_population(self, results: Dict[str, Any], experiment: Dict[str, Any], save_path: str = None):
-        """Plot population dynamics"""
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
-        
-        # Population plot
-        ax1.plot(results['times_ns'], results['population_ms_minus1'], label='P(ms=-1)', color='red')
-        ax1.plot(results['times_ns'], results['population_ms0'], label='P(ms=0)', color='blue')
-        ax1.plot(results['times_ns'], results['population_ms1'], label='P(ms=+1)', color='green')
-        ax1.set_ylabel('Population')
-        ax1.set_title('NV Center Population Dynamics')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        ax1.set_ylim(-0.05, 1.05)
-        
-        # MW pulse visualization
-        sequence = experiment['sequence']
-        mw_pulses = [e for e in sequence if e['type'] == 'mw_pulse']
-        
-        for i, pulse in enumerate(mw_pulses):
-            start = pulse['start_ns']
-            duration = pulse['duration_ns']
-            
-            if 'pulse_array' in pulse:
-                # Plot pulse array
-                times = np.arange(len(pulse['pulse_array']['omega_Hz'])) * self.DT_ns
-                ax2.plot(times, np.array(pulse['pulse_array']['omega_Hz'])/1e6, label=f'MW Pulse {i+1}')
-            else:
-                # Plot envelope
-                t_pulse = np.linspace(start, start + duration, 100)
-                omega = [self.mw_envelope(t*1e-9, start*1e-9, duration*1e-9, 
-                                         pulse.get('omega_rabi_Hz', 5e6), 
-                                         pulse.get('shape', 'cos')) for t in t_pulse]
-                ax2.plot(t_pulse, np.array(omega)/1e6, label=f'MW Pulse {i+1}')
-        
-        ax2.set_xlabel('Time (ns)')
-        ax2.set_ylabel('Rabi Frequency (MHz)')
-        ax2.set_title('Microwave Control Pulses')
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-        
-        # Add fidelity if available
-        if results['fidelity'] is not None:
-            fig.suptitle(f'Final Fidelity: {results["fidelity"]:.4f}', fontsize=14)
-        
-        plt.tight_layout()
-        
-        if save_path:
-            plt.savefig(save_path, dpi=150, bbox_inches='tight')
-            plt.close()
-        else:
-            plt.show()
-            
-    def plot_photon_trace(self, results: Dict[str, Any], save_path: str = None):
-        """Plot photon count trace with higher resolution"""
-        photon_data = results['photon_counts']
-        self.plot_photon_trace_data(photon_data, save_path)
-        
-    def plot_photon_trace_data(self, photon_data: Dict[str, Any], save_path: str = None):
-        """Plot photon count trace data"""
-        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
-        
-        # Plot with smaller bins for better resolution
-        ax.step(photon_data['times_ns'], photon_data['counts'], where='mid', label='Photon counts', linewidth=0.5)
-        
-        # Add statistics
-        mean_counts = np.mean(photon_data['counts'])
-        std_counts = np.std(photon_data['counts'])
-        ax.axhline(mean_counts, color='red', linestyle='--', alpha=0.5, label=f'Mean: {mean_counts:.1f}')
-        ax.fill_between(photon_data['times_ns'], 
-                       mean_counts - std_counts, 
-                       mean_counts + std_counts, 
-                       alpha=0.2, color='red', label=f'±1σ: {std_counts:.1f}')
-        
-        ax.set_xlabel('Time (ns)')
-        ax.set_ylabel('Photon Counts')
-        
-        # Add measurement ID to title if available
-        title = f"Photon Trace (bin width: {photon_data['bin_width_ns']} ns, shots: {photon_data['shots']})"
-        if 'measurement_id' in photon_data:
-            title += f" - Measurement {photon_data['measurement_id'] + 1}"
-        ax.set_title(title)
-        
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        
-        if save_path:
-            plt.savefig(save_path, dpi=150, bbox_inches='tight')
-            plt.close()
-        else:
-            plt.show()
             
     def export_photon_data(self, all_photon_counts: List[Dict[str, Any]], experiment: Dict[str, Any], save_dir: str = 'results'):
         """Export photon count data to data files"""
@@ -538,7 +421,7 @@ def load_system_config(system_path: str = None) -> Dict[str, Any]:
         system_path = os.path.join(os.path.dirname(config_path), 'system.json')
         if not os.path.exists(system_path):
             # Fall back to test directory
-            system_path = 'test/system.json'
+            system_path = 'system.json'
     
     with open(system_path, 'r') as f:
         return json.load(f)
@@ -566,7 +449,7 @@ def main():
         experiment_dir = os.path.dirname(experiment_path)
         system_path = os.path.join(experiment_dir, 'system.json')
         if not os.path.exists(system_path):
-            system_path = 'test/system.json'
+            system_path = 'system.json'
     
     if not os.path.exists(system_path):
         print(f"Error: System file '{system_path}' not found")
@@ -584,11 +467,7 @@ def main():
     experiment = config['experiment']
     results = simulator.run_experiment(experiment)
     
-    # Generate outputs
-    output_dir = experiment_config.get('output_dir', 'results')
-    simulator.plot_results(results, experiment, save_dir=output_dir)
-    
-    print(f"Experiment completed. Results saved to {output_dir}/")
+    print(f"Experiment completed. Raw data files saved to results/")
     if results['fidelity'] is not None:
         print(f"Final fidelity: {results['fidelity']:.4f}")
 

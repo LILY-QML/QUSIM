@@ -1,0 +1,40 @@
+# NV-CENTER PHOTON COUNT DATA
+# Generated: 2025-07-10 21:01:19
+# Experiment: Rabi Oscillation
+# Description: Measure Rabi oscillations by varying MW pulse duration with simultaneous laser readout
+# Measurement ID: 5
+# Total time: 8000 ns
+#
+# MEASUREMENT PARAMETERS:
+# - Bin width: 5 ns
+# - Total shots: 1000
+# - Start time: 6250 ns
+# - End time: 6445 ns
+# - Total bins: 40
+# - Mean counts: 2215.93
+# - Std counts: 565.45
+# - Min counts: 0
+# - Max counts: 2576
+#
+# SYSTEM PARAMETERS:
+# - Magnetic field: [0.0, 0.0, 500.0] G
+# - C13 nuclei: 3
+# - T1: 5.00e-03 s
+# - Tphi: 6.00e-06 s
+# - Beta_max: 5.00e+08 Hz
+# - Random seed: 42
+#
+# PULSE SEQUENCE:
+# - Pulse 1: 0-50 ns, Ω=5.0 MHz, φ=0.000 rad, Δ=0.0 MHz
+# - Pulse 2: 1500-1600 ns, Ω=5.0 MHz, φ=0.000 rad, Δ=0.0 MHz
+# - Pulse 3: 3000-3150 ns, Ω=5.0 MHz, φ=0.000 rad, Δ=0.0 MHz
+# - Pulse 4: 4500-4700 ns, Ω=5.0 MHz, φ=0.000 rad, Δ=0.0 MHz
+# - Pulse 5: 6000-6250 ns, Ω=5.0 MHz, φ=0.000 rad, Δ=0.0 MHz
+#
+# DATA FORMAT:
+# Each line contains all photon counts from one counter
+# Time(ns) -> Bin_center = bin_index * 5 + 6250
+# Counts -> Poisson-distributed photon counts per bin
+#
+# MEASUREMENT_ID  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT  COUNT...
+       4       0     565     983    1332    1532    1760    1925    2086    2173    2229    2389    2218    2341    2368    2388    2556    2494    2475    2432    2501    2419    2496    2463    2526    2525    2464    2449    2528    2441    2516    2469    2515    2511    2447    2576    2539    2542    2447    2484    2533

@@ -1,0 +1,348 @@
+{
+  "empirical_parameters_comment": "=== EMPIRICAL PARAMETERS - MUST BE MEASURED FOR YOUR SPECIFIC SETUP ===",
+  "empirical_parameters": {
+    "charge_state_dynamics": {
+      "jump_rate": 1.0,
+      "jump_rate_comment": "EMPIRICAL: Measure via charge state blinking statistics [Hz]",
+      "laser_ionization_factor": 0.1,
+      "laser_ionization_factor_comment": "EMPIRICAL: d(rate)/d(power) from power-dependent measurements [1/mW]",
+      "surface_distance_decay": 1e-08,
+      "surface_distance_decay_comment": "EMPIRICAL: Decay length from depth-dependent measurements [m]"
+    },
+    "strain_coupling": {
+      "strain_to_zfs_coupling": 10000000.0,
+      "strain_to_zfs_coupling_comment": "EMPIRICAL: Measure via stress-dependent ODMR [Hz/strain]",
+      "strain_to_e_coupling": 5000000.0,
+      "strain_to_e_coupling_comment": "EMPIRICAL: Measure transverse strain effects [Hz/strain]"
+    },
+    "noise_amplitudes": {
+      "lab_field_drift": 1e-07,
+      "lab_field_drift_comment": "EMPIRICAL: Measure your lab's B-field stability [T]",
+      "lab_field_noise_exponent": 1.0,
+      "lab_field_noise_exponent_comment": "EMPIRICAL: Fit 1/f^\u03b1 from field noise PSD",
+      "temperature_stability": 0.1,
+      "temperature_stability_comment": "EMPIRICAL: Measure your setup's T fluctuations [K]",
+      "mechanical_vibration_amplitude": 1e-07,
+      "mechanical_vibration_amplitude_comment": "EMPIRICAL: Measure with accelerometer [strain]"
+    },
+    "microwave_system": {
+      "mw_amplitude_stability": 0.01,
+      "mw_amplitude_stability_comment": "EMPIRICAL: Measure MW source amplitude noise",
+      "mw_phase_noise_density": 0.01,
+      "mw_phase_noise_density_comment": "EMPIRICAL: From MW source spec sheet [rad/\u221aHz]",
+      "mw_frequency_stability": 1000.0,
+      "mw_frequency_stability_comment": "EMPIRICAL: Allan deviation of MW source [Hz]"
+    },
+    "optical_system": {
+      "laser_rin": 0.0001,
+      "laser_rin_comment": "EMPIRICAL: Measure your laser's RIN spectrum",
+      "detector_dark_counts": 10,
+      "detector_dark_counts_comment": "EMPIRICAL: Measure detector in dark [Hz]",
+      "collection_efficiency": 0.8,
+      "collection_efficiency_comment": "Near-perfect collection (80%)",
+      "readout_contrast": 0.95,
+      "readout_contrast_comment": "EMPIRICAL: Measure |0\u27e9 vs |\u00b11\u27e9 contrast"
+    },
+    "strain_tensor": {
+      "d_parallel_coupling": 1000000000000000.0,
+      "d_parallel_coupling_comment": "EMPIRICAL: Axial strain to D coupling [Hz/strain]",
+      "d_perp_coupling": 500000000000000.0,
+      "d_perp_coupling_comment": "EMPIRICAL: Transverse strain to D coupling [Hz/strain]",
+      "e_parameter_coupling": 100000000000000.0,
+      "e_parameter_coupling_comment": "EMPIRICAL: Strain to E parameter coupling [Hz/strain]"
+    },
+    "leeson_microwave": {
+      "q_factor": 10000,
+      "q_factor_comment": "EMPIRICAL: Resonator Q factor from MW source specs",
+      "noise_figure_db": 12.0,
+      "noise_figure_db_comment": "EMPIRICAL: MW amplifier noise figure [dB]",
+      "power_level_dbm": 10.0,
+      "power_level_dbm_comment": "EMPIRICAL: MW output power [dBm]",
+      "flicker_corner_hz": 1000.0,
+      "flicker_corner_hz_comment": "EMPIRICAL: 1/f corner frequency [Hz]",
+      "close_in_corner_hz": 100000.0,
+      "close_in_corner_hz_comment": "EMPIRICAL: 1/f\u00b2 corner frequency [Hz]"
+    },
+    "sample_specific": {
+      "actual_c13_concentration": 0.011,
+      "actual_c13_concentration_comment": "EMPIRICAL: Measure via NMR or buy certified diamond",
+      "nv_depth": 1e-08,
+      "nv_depth_comment": "EMPIRICAL: Measure via charge state stability or etch-back",
+      "local_strain": 1e-06,
+      "local_strain_comment": "EMPIRICAL: Measure via ODMR splitting",
+      "local_electric_field": 1000.0,
+      "local_electric_field_comment": "EMPIRICAL: Measure via Stark shift [V/m]"
+    }
+  },
+  "physical_constants": {
+    "fundamental": {
+      "h": 6.62607015e-34,
+      "h_comment": "Planck constant [J*s] (CODATA 2018)",
+      "hbar": 1.054571817e-34,
+      "hbar_comment": "Reduced Planck constant [J*s] (CODATA 2018)",
+      "kb": 1.380649e-23,
+      "kb_comment": "Boltzmann constant [J/K] (CODATA 2018)",
+      "mu_b": 9.2740100783e-24,
+      "mu_b_comment": "Bohr magneton [J/T] (CODATA 2018)",
+      "c": 299792458,
+      "c_comment": "Speed of light [m/s] (exact)",
+      "e": 1.602176634e-19,
+      "e_comment": "Elementary charge [C] (CODATA 2018)",
+      "mu_0": 1.25663706212e-06,
+      "mu_0_comment": "Vacuum permeability [T*m/A]"
+    },
+    "nv_center": {
+      "gamma_e": 28024925000.0,
+      "gamma_e_comment": "Electron gyromagnetic ratio [Hz/T]",
+      "g_e": 2.0023,
+      "g_e_comment": "Electron g-factor for NV center",
+      "d_gs": 2870000000.0,
+      "d_gs_comment": "Ground state zero-field splitting [Hz]",
+      "e_gs": 0.0,
+      "e_gs_comment": "Ground state strain parameter [Hz] (typically < 10 MHz)",
+      "gamma_n_13c": 10705000.0,
+      "gamma_n_13c_comment": "13C nuclear gyromagnetic ratio [Hz/T]",
+      "gamma_n_14n": 3077000.0,
+      "gamma_n_14n_comment": "14N nuclear gyromagnetic ratio [Hz/T]",
+      "natural_linewidth": 13000000.0,
+      "natural_linewidth_comment": "Natural linewidth of NV optical transition [Hz]",
+      "typical_t1": 0.001,
+      "typical_t1_comment": "Typical T1 at room temperature [s]",
+      "typical_t2": 1e-06,
+      "typical_t2_comment": "Typical T2* at room temperature [s]"
+    },
+    "unit_conversions": {
+      "gauss_to_tesla": 0.0001,
+      "mhz_to_hz": 1000000.0,
+      "ghz_to_hz": 1000000000.0,
+      "ev_to_joule": 1.602176634e-19,
+      "nm_to_m": 1e-09,
+      "us_to_s": 1e-06,
+      "ns_to_s": 1e-09
+    }
+  },
+  "noise_parameters": {
+    "magnetic": {
+      "c13_bath": {
+        "concentration": 0.011,
+        "concentration_comment": "Natural 13C abundance (1.1%)",
+        "correlation_time": 1e-06,
+        "correlation_time_comment": "Typical correlation time [s]",
+        "coupling_strength": 1e-06,
+        "coupling_strength_comment": "Typical dipolar coupling strength [T]"
+      },
+      "external_field": {
+        "drift_amplitude": 5e-09,
+        "drift_amplitude_comment": "Good lab field drift (5 nT) [T]",
+        "noise_exponent": 1.0,
+        "noise_exponent_comment": "1/f^alpha noise, alpha=1 for pink noise",
+        "high_freq_cutoff": 1000000.0,
+        "high_freq_cutoff_comment": "Measurement bandwidth limit [Hz]"
+      },
+      "johnson": {
+        "temperature": 300,
+        "temperature_comment": "Room temperature [K]",
+        "conductor_distance": 5e-3,
+        "conductor_distance_comment": "Distance to nearest conductor [m] - REALISTIC 5 mm for typical lab setup",
+        "conductor_resistivity": 1.7e-8,
+        "conductor_resistivity_comment": "Copper resistivity at room temp [Ohm*m]",
+        "conductor_thickness": 50e-6,
+        "conductor_thickness_comment": "Conductor thickness [m] - REALISTIC 50 μm wire/trace",
+        "conductor_length": 1e-3,
+        "conductor_length_comment": "Conductor length for geometric resonance [m] - 1 mm"
+      }
+    },
+    "electric": {
+      "charge_state": {
+        "jump_rate": 1.0,
+        "jump_rate_comment": "NV- <-> NV0 transition rate [Hz]",
+        "laser_power": 0.0,
+        "laser_power_comment": "Laser power affecting ionization [mW]",
+        "surface_distance": 1e-08,
+        "surface_distance_comment": "Distance to surface [m]"
+      },
+      "surface": {
+        "noise_amplitude": 0.001,
+        "noise_amplitude_comment": "Electric field noise amplitude [V/m]"
+      }
+    },
+    "thermal": {
+      "temperature_fluctuation": {
+        "base_temperature": 300,
+        "base_temperature_comment": "Nominal temperature [K]",
+        "fluctuation_amplitude": 0.1,
+        "fluctuation_amplitude_comment": "Temperature fluctuation amplitude [K]",
+        "correlation_time": 0.001,
+        "correlation_time_comment": "Thermal time constant [s]",
+        "phonon_coupling_strength": 0.001,
+        "phonon_coupling_strength_comment": "Phonon coupling coefficient"
+      }
+    },
+    "mechanical": {
+      "strain": {
+        "static_strain": 1e-06,
+        "static_strain_comment": "Background strain (dimensionless)",
+        "dynamic_amplitude": 1e-07,
+        "dynamic_amplitude_comment": "Oscillation amplitude (dimensionless)",
+        "oscillation_frequency": 100,
+        "oscillation_frequency_comment": "Mechanical resonance [Hz]",
+        "random_amplitude": 1e-08,
+        "random_amplitude_comment": "Stochastic component (dimensionless)",
+        "strain_coupling": 10000000.0,
+        "strain_coupling_comment": "Coupling to ZFS parameter D [Hz/strain]"
+      }
+    },
+    "microwave": {
+      "noise": {
+        "amplitude_noise": 0.01,
+        "amplitude_noise_comment": "Relative amplitude fluctuation",
+        "phase_noise": 0.01,
+        "phase_noise_comment": "Phase noise density [rad/sqrt(Hz)]",
+        "frequency_drift": 1000.0,
+        "frequency_drift_comment": "Slow frequency drift amplitude [Hz]",
+        "drift_time_constant": 0.001,
+        "drift_time_constant_comment": "Drift correlation time [s]"
+      }
+    },
+    "optical": {
+      "readout": {
+        "laser_rin": 0.0001,
+        "laser_rin_comment": "Relative intensity noise at 1 Hz",
+        "rin_corner_frequency": 1000.0,
+        "rin_corner_frequency_comment": "RIN corner frequency [Hz]",
+        "detector_dark_rate": 10,
+        "detector_dark_rate_comment": "Dark count rate [Hz]",
+        "detector_efficiency": 0.7,
+        "detector_efficiency_comment": "High-end SPAD (70% QE)",
+        "readout_fidelity": 0.95,
+        "readout_fidelity_comment": "Contrast between states",
+        "bright_state_rate": 500000000.0,
+        "bright_state_rate_comment": "Ultra-bright NV center (500 MHz)",
+        "dark_state_rate": 50000000.0,
+        "dark_state_rate_comment": "Dark state rate (50 MHz)"
+      }
+    }
+  },
+  "simulation_defaults": {
+    "timestep": 1e-09,
+    "timestep_comment": "Default simulation timestep [s]",
+    "batch_size": 1000,
+    "batch_size_comment": "Default batch size for streaming",
+    "typical_dephasing_rate": 1000000.0,
+    "typical_dephasing_rate_comment": "Default pure dephasing rate [Hz]"
+  },
+  "experimental_presets": {
+    "room_temperature": {
+      "temperature": 300,
+      "phonon_coupling": 0.001,
+      "t1": 0.001,
+      "t2": 1e-06,
+      "external_field_scaling": 1.0,
+      "external_field_scaling_comment": "Standard lab conditions - full external field noise"
+    },
+    "balanced_lab": {
+      "temperature": 300,
+      "c13_concentration": 0.011,
+      "external_field_scaling": 0.01,
+      "c13_field_enhancement": 10.0,
+      "johnson_noise_scaling": 0.5,
+      "external_field_scaling_comment": "Balanced: external field 100x reduced for realistic C13/external ratio",
+      "c13_field_enhancement_comment": "Enhanced C13 contribution by 10x for better balance",
+      "johnson_noise_scaling_comment": "Johnson noise reduced by 2x in shielded environment"
+    },
+    "well_shielded": {
+      "temperature": 300,
+      "c13_concentration": 0.011,
+      "external_field_scaling": 0.001,
+      "c13_field_enhancement": 5.0,
+      "johnson_noise_scaling": 0.2,
+      "external_field_scaling_comment": "Well-shielded: 1000x reduction in external field (5 pT)",
+      "c13_field_enhancement_comment": "Enhanced C13 by 5x to match reduced external field",
+      "johnson_noise_scaling_comment": "Johnson noise 5x reduced in well-shielded environment"
+    },
+    "cryogenic": {
+      "temperature": 4.0,
+      "phonon_coupling": 1e-05,
+      "t1": 1.0,
+      "t2": 0.001,
+      "external_field_scaling": 0.1,
+      "external_field_scaling_comment": "Cryogenic: 10x better field stability (0.5 nT)"
+    },
+    "shallow_nv": {
+      "depth": 5e-09,
+      "charge_jump_rate": 10.0,
+      "surface_noise": 0.01,
+      "external_field_scaling": 2.0,
+      "external_field_scaling_comment": "Shallow: 2x worse field noise from surface effects"
+    },
+    "deep_nv": {
+      "depth": 1e-07,
+      "charge_jump_rate": 0.1,
+      "surface_noise": 0.0001,
+      "external_field_scaling": 0.5,
+      "external_field_scaling_comment": "Deep: 2x better field isolation (2.5 nT)"
+    },
+    "isotopically_pure": {
+      "c13_concentration": 0.0001,
+      "p1_concentration": 1e-05,
+      "external_field_scaling": 0.01,
+      "external_field_scaling_comment": "Ultra-pure: 100x better field stability (50 pT) from premium lab setup"
+    },
+    "natural_diamond": {
+      "c13_concentration": 0.011,
+      "p1_concentration": 0.001,
+      "external_field_scaling": 1.0,
+      "external_field_scaling_comment": "Natural diamond - standard field conditions"
+    },
+    "ultra_clean": {
+      "temperature": 1.0,
+      "c13_concentration": 1e-05,
+      "p1_concentration": 1e-06,
+      "external_field_scaling": 0.001,
+      "external_field_scaling_comment": "Ultra-clean: mK + isotope purified + premium magnetic shielding (5 pT)",
+      "phonon_coupling": 1e-06,
+      "t1": 10.0,
+      "t2": 0.01
+    },
+    "high_sensitivity": {
+      "temperature": 4.0,
+      "c13_concentration": 0.0001,
+      "external_field_scaling": 0.01,
+      "depth": 1e-07,
+      "external_field_scaling_comment": "Optimized for sensing: cryogenic + isotopically pure + deep NV",
+      "phonon_coupling": 1e-05,
+      "t1": 5.0,
+      "t2": 0.005
+    },
+    "quantum_memory": {
+      "temperature": 0.1,
+      "c13_concentration": 1e-06,
+      "external_field_scaling": 0.0001,
+      "depth": 5e-08,
+      "external_field_scaling_comment": "Quantum memory: 100 mK + ultra-pure + ultra-deep + superconducting shield",
+      "phonon_coupling": 1e-07,
+      "t1": 100.0,
+      "t2": 1.0
+    },
+    "room_temp_sensing": {
+      "temperature": 300,
+      "c13_concentration": 0.011,
+      "external_field_scaling": 1.0,
+      "depth": 1e-08,
+      "external_field_scaling_comment": "Practical sensing: room temp natural diamond",
+      "phonon_coupling": 0.001,
+      "t1": 0.001,
+      "t2": 1e-06
+    },
+    "nanoscale_sensing": {
+      "temperature": 300,
+      "c13_concentration": 0.011,
+      "external_field_scaling": 3.0,
+      "depth": 2e-09,
+      "external_field_scaling_comment": "Nanoscale sensing: shallow NV close to surface (worse field stability)",
+      "phonon_coupling": 0.005,
+      "t1": 0.0005,
+      "t2": 5e-07
+    }
+  }
+}
